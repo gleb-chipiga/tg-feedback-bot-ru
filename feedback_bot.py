@@ -413,7 +413,7 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
         return
     wait_reply_from_id = await bot.storage.get('wait_reply_from_id')
     if wait_reply_from_id is None:
-        logger.info('Skip message without text from admin')
+        logger.info('Ignore message from admin')
         return
     if update.message.text is None:
         await bot.send_message(update.message.chat.id,
