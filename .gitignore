@@ -1,0 +1,5 @@
+.env
+.idea
+.mypy_cache
+storage
+*.sqlite

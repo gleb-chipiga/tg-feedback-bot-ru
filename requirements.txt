@@ -1,0 +1,3 @@
+aiotgbot[sqlite]>=0.1.0.dev2
+attrs
+uvloop>=0.12.0rc1
