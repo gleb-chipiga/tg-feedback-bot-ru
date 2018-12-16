@@ -486,9 +486,11 @@ def main():
     import pathlib
 
     parser = argparse.ArgumentParser(description='Feedback aiotgbot bot.')
-    parser.add_argument('admin_username', help='admin username')
     parser.add_argument('storage_path', type=pathlib.Path,
                         help='aiotgbot bot API token')
+    parser.add_argument('-a', dest='admin_username',
+                        default=os.environ.get('ADMIN_USERNAME', ''),
+                        type=str, help='admin username')
     parser.add_argument('-t', dest='token',
                         default=os.environ.get('TG_BOT_TOKEN', ''),
                         type=str, help='aiotgbot bot API token')
