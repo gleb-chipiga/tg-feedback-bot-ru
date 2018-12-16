@@ -2,7 +2,7 @@ FROM python:alpine
 
 RUN mkdir /feedback_bot
 COPY feedback_bot.py requirements.txt /feedback_bot/
-RUN apk --update add --virtual build-dependencies build-base && \
+RUN apk --update add --no-cache --virtual build-dependencies build-base && \
     pip install --no-cache-dir -r /feedback_bot/requirements.txt && \
     apk del build-dependencies build-base
 
