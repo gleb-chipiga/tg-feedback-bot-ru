@@ -1,10 +1,11 @@
 FROM python:alpine
 
-RUN mkdir /feedback_bot
-COPY feedback_bot.py requirements.txt /feedback_bot/
-RUN apk --update add --no-cache --virtual build-dependencies build-base && \
-    pip install --no-cache-dir -r /feedback_bot/requirements.txt && \
-    apk del build-dependencies build-base
+RUN mkdir /usr/src/feedback_bot
+COPY feedback_bot.py requirements.txt /usr/src/feedback_bot/
+RUN apk add --no-cache --virtual build-deps build-base && \
+    pip install --no-cache-dir -r /usr/src/feedback_bot/requirements.txt && \
+    apk del build-deps
+RUN apk add --no-cache tzdata
 
-VOLUME /storage
-CMD ["python3", "/feedback_bot/feedback_bot.py", "/storage/feedback_bot.sqlite"]
+VOLUME /var/feedback_bot
+CMD ["python3", "/usr/src/feedback_bot/feedback_bot.py", "/var/feedback_bot/feedback_bot.sqlite"]
