@@ -1,13 +1,14 @@
 import asyncio
 import logging
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING, List, Optional, Union
 
 import attr
 from aiotgbot import (BaseFilter, BaseStorage, Bot, BotBlocked, BotUpdate,
                       Chat, ContentType, GroupChatFilter, HandlerTable,
                       InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
-                      PrivateChatFilter, TelegramError, entities_to_html)
+                      PrivateChatFilter, TelegramError, message_to_html)
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 logger = logging.getLogger('feedback_bot')
@@ -392,8 +393,8 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
         return
 
     await send_user_message(bot, update.message.chat.id,
-                            entities_to_html(update.message.entities,
-                                             update.message.text))
+                            message_to_html(update.message.text,
+                                            update.message.entities))
 
     await bot.storage.set('wait_reply_from_id')
     await set_chat(bot.storage, 'current_chat')
@@ -422,8 +423,8 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
         return
 
     await send_user_message(bot, update.message.chat.id,
-                            entities_to_html(update.message.entities,
-                                             update.message.text))
+                            message_to_html(update.message.text,
+                                            update.message.entities))
 
     await bot.storage.set('wait_reply_from_id')
     await set_chat(bot.storage, 'current_chat')
@@ -457,7 +458,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     if current_chat is None:
         logger.info('Selected chat not found in storage "%s"', current_key)
         await bot.edit_message_text(
-            f'Ошибка.', chat_id=update.callback_query.message.chat.id,
+            'Ошибка.', chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id,
             disable_web_page_preview=True)
         return
@@ -480,13 +481,16 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set('group_chat')
 
 
+def path(_str: str) -> Path:
+    return Path(_str)
+
+
 def main():
     import argparse
     import os
-    import pathlib
 
     parser = argparse.ArgumentParser(description='Feedback aiotgbot bot.')
-    parser.add_argument('storage_path', type=pathlib.Path,
+    parser.add_argument('storage_path', type=path,
                         help='aiotgbot bot API token')
     parser.add_argument('-a', dest='admin_username',
                         default=os.environ.get('ADMIN_USERNAME', ''),
@@ -494,7 +498,8 @@ def main():
     parser.add_argument('-t', dest='token',
                         default=os.environ.get('TG_BOT_TOKEN', ''),
                         type=str, help='aiotgbot bot API token')
-    parser.add_argument('-l', dest='chat_list_size', type=int, default=5,
+    parser.add_argument('-l', dest='chat_list_size', type=int,
+                        default=os.environ.get('CHAT_LIST_SIZE', 5),
                         help='size of chat list')
     parser.add_argument('-d', dest='debug', action='store_true',
                         help='enable debug mode')
@@ -517,6 +522,7 @@ def main():
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         logging.getLogger('asyncio').setLevel(logging.ERROR)
         logging.getLogger('aiosqlite').setLevel(logging.INFO)
+        logger.debug('PYTHONOPTIMIZE=%s', os.environ['PYTHONOPTIMIZE'])
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
 
@@ -527,7 +533,7 @@ def main():
 
     if not TYPE_CHECKING:
         try:
-            import uvloop
+            import uvloop  # noqa
         except ImportError:
             pass
         else:
