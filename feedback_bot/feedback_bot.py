@@ -343,7 +343,11 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
     if group_chat is not None and group_chat.id != update.message.chat.id:
         await bot.leave_chat(update.message.chat.id)
         return
-    if await bot.storage.get('wait_reply_from_id') != update.message.from_.id:
+    wait_reply_from_id = await bot.storage.get('wait_reply_from_id')
+    if (
+        wait_reply_from_id != update.message.from_.id and
+        update.message.media_group_id is None
+    ):
         logger.info('Ignore message from group "%s" user "%s"',
                     update.message.chat.title, update.message.from_.to_dict())
         return
@@ -367,7 +371,7 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
         logger.info('Ignore message in private chat with admin')
         return
     wait_reply_from_id = await bot.storage.get('wait_reply_from_id')
-    if wait_reply_from_id is None:
+    if wait_reply_from_id is None and update.message.media_group_id is None:
         logger.info('Ignore message from admin')
         return
 
