@@ -33,10 +33,11 @@ setup(
     ],
     packages=['feedback_bot'],
     python_requires='>=3.8,<3.10',
-    install_requires=['aiotgbot[sqlite]>=0.4.0.dev3,<0.5.0', 'uvloop'],
+    install_requires=['aiotgbot[sqlite]>=0.4.0.dev3,<0.6.0', 'aiojobs',
+                      'aiojobs-stubs>=0.2.2.post1', 'attrs', 'uvloop'],
     entry_points={
         'console_scripts': [
             'feedback-bot=feedback_bot.feedback_bot:main'
         ],
-    },
+    }
 )

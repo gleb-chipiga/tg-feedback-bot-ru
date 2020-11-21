@@ -1,74 +1,20 @@
 import asyncio
 import logging
 import re
-from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Union
 
-import attr
-from aiotgbot import (BaseFilter, BaseStorage, Bot, BotBlocked, BotUpdate,
-                      Chat, ContentType, GroupChatFilter, HandlerTable,
-                      InlineKeyboardButton, InlineKeyboardMarkup, ParseMode,
-                      PrivateChatFilter, TelegramError, message_to_html)
+from aiotgbot import (Bot, BotBlocked, BotUpdate, ContentType, GroupChatFilter,
+                      HandlerTable, InlineKeyboardButton, InlineKeyboardMarkup,
+                      Message, ParseMode, PrivateChatFilter, TelegramError)
 from aiotgbot.storage_sqlite import SQLiteStorage
+
+from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
+                    get_chat_list, path, send_from_message, set_chat,
+                    set_chat_list, user_link, user_name)
 
 logger = logging.getLogger('feedback_bot')
 
 handlers = HandlerTable()
-
-
-def user_name(chat: Chat) -> str:
-    assert chat.first_name is not None
-    if chat.last_name is not None:
-        return f'{chat.first_name} {chat.last_name}'
-    else:
-        return chat.first_name
-
-
-def user_link(chat: Chat) -> str:
-    return f'<a href="tg://user?id={chat.id}">{user_name(chat)}</a>'
-
-
-async def set_chat(_storage: BaseStorage, key: str,
-                   chat: Optional[Chat] = None) -> None:
-    await _storage.set(key, chat.to_dict() if chat is not None else None)
-
-
-async def get_chat(_storage: BaseStorage, key: str) -> Optional[Chat]:
-    data = await _storage.get(key)
-    return Chat.from_dict(data) if data is not None else None
-
-
-async def set_chat_list(_storage: BaseStorage, key: str,
-                        chat_list: List[Chat]) -> None:
-    await _storage.set(key, [chat.to_dict() for chat in chat_list])
-
-
-async def get_chat_list(_storage: BaseStorage, key: str) -> List[Chat]:
-    return [Chat.from_dict(item) for item in await _storage.get(key)]
-
-
-@attr.s(slots=True, frozen=True, auto_attribs=True)
-class FromUserFilter(BaseFilter):
-
-    async def check(self, bot: Bot, update: BotUpdate) -> bool:
-        if 'admin_username' not in bot:
-            raise RuntimeError('Admin username not set')
-
-        return (update.message is not None and
-                update.message.from_ is not None and
-                update.message.from_.username != bot['admin_username'])
-
-
-@attr.s(slots=True, frozen=True, auto_attribs=True)
-class FromAdminFilter(BaseFilter):
-
-    async def check(self, bot: Bot, update: BotUpdate) -> bool:
-        if 'admin_username' not in bot:
-            raise RuntimeError('Admin username not set')
-
-        return (update.message is not None and
-                update.message.from_ is not None and
-                update.message.from_.username == bot['admin_username'])
 
 
 @handlers.message(commands=['start'],
@@ -315,8 +261,10 @@ async def group_left_member(bot: Bot, update: BotUpdate):
 
 @handlers.message(filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_message(bot: Bot, update: BotUpdate) -> None:
+    assert isinstance(bot['album_forwarder'], AlbumForwarder)
     assert update.message is not None
     assert update.message.from_ is not None
+
     logger.info('Message from "%s"', update.message.from_.to_dict())
     await bot.storage.set(f'chat-{update.message.chat.id}',
                           update.message.chat.to_dict())
@@ -330,12 +278,14 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
     if update.message.audio is not None or update.message.sticker is not None:
         logger.info('Message from user "%s" contains audio or sticker',
                     update.message.from_.to_dict())
-        link = user_link(update.message.chat)
-        await bot.send_message(forward_chat_id, f'От {link}',
-                               parse_mode=ParseMode.HTML)
+        await send_from_message(bot, forward_chat_id, update.message.chat)
 
-    await bot.forward_message(forward_chat_id, update.message.chat.id,
-                              update.message.message_id)
+    if update.message.media_group_id is not None:
+        await bot['album_forwarder'].add_message(
+            update.message, forward_chat_id, add_from_info=True)
+    else:
+        await bot.forward_message(forward_chat_id, update.message.chat.id,
+                                  update.message.message_id)
 
     chat_list = await get_chat_list(bot.storage, 'chat_list')
     if all(item.id != update.message.chat.id for item in chat_list):
@@ -345,30 +295,41 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
         await set_chat_list(bot.storage, 'chat_list', chat_list)
 
 
-async def send_user_message(bot: Bot, admin_chat_id: int,
-                            html_text: str) -> None:
+async def send_user_message(bot: Bot, message: Message) -> None:
+    assert isinstance(bot['album_forwarder'], AlbumForwarder)
     current_chat = await get_chat(bot.storage, 'current_chat')
-    if current_chat is None:
-        await bot.send_message(admin_chat_id, 'Нет текущего пользователя')
-        logger.info('Skip message to user: no current user')
+
+    if current_chat is None and message.media_group_id is not None:
+        await bot['album_forwarder'].add_message(message)
+        logger.debug('Add next media group item to forwarder')
         return
-    logger.info('Send message to "%s"', current_chat.to_dict())
+    elif current_chat is None:
+        await bot.send_message(message.chat.id, 'Нет текущего пользователя')
+        logger.debug('Skip message to user: no current user')
+        return
+    elif message.media_group_id is not None:
+        await bot['album_forwarder'].add_message(message, current_chat.id)
+        logger.debug('Add first media group item to forwarder')
+        return
+
+    logger.debug('Send message to "%s"', current_chat.to_dict())
     try:
-        await bot.send_message(current_chat.id, html_text,
-                               parse_mode=ParseMode.HTML)
+        await bot.copy_message(current_chat.id, message.chat.id,
+                               message.message_id)
     except BotBlocked:
         chat_list = await get_chat_list(bot.storage, 'chat_list')
         chat_list = [item for item in chat_list if item.id != current_chat.id]
         await set_chat_list(bot.storage, 'chat_list', chat_list)
         await bot.storage.delete(f'chat-{current_chat.id}')
         await bot.send_message(
-            admin_chat_id, f'{user_link(current_chat)} меня заблокировал.',
+            message.chat.id, f'{user_link(current_chat)} меня заблокировал.',
             parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         logger.info('Blocked by user "%s"', current_chat.to_dict())
         return
     else:
         await bot.send_message(
-            admin_chat_id, f'Сообщение отправлено {user_link(current_chat)}.',
+            message.chat.id,
+            f'Сообщение отправлено {user_link(current_chat)}.',
             parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
@@ -386,15 +347,8 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
         logger.info('Ignore message from group "%s" user "%s"',
                     update.message.chat.title, update.message.from_.to_dict())
         return
-    if update.message.text is None:
-        await bot.send_message(update.message.chat.id,
-                               'Поддерживаются только текстовые сообщения.')
-        logger.info('Skip message without text')
-        return
 
-    await send_user_message(bot, update.message.chat.id,
-                            message_to_html(update.message.text,
-                                            update.message.entities))
+    await send_user_message(bot, update.message)
 
     await bot.storage.set('wait_reply_from_id')
     await set_chat(bot.storage, 'current_chat')
@@ -416,15 +370,8 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
     if wait_reply_from_id is None:
         logger.info('Ignore message from admin')
         return
-    if update.message.text is None:
-        await bot.send_message(update.message.chat.id,
-                               'Поддерживаются только текстовые сообщения.')
-        logger.info('Skip message without text from admin')
-        return
 
-    await send_user_message(bot, update.message.chat.id,
-                            message_to_html(update.message.text,
-                                            update.message.entities))
+    await send_user_message(bot, update.message)
 
     await bot.storage.set('wait_reply_from_id')
     await set_chat(bot.storage, 'current_chat')
@@ -479,10 +426,13 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set('admin_chat_id')
     if await bot.storage.get('group_chat') is None:
         await bot.storage.set('group_chat')
+    bot['album_forwarder'] = AlbumForwarder(bot)
+    await bot['album_forwarder'].start()
 
 
-def path(_str: str) -> Path:
-    return Path(_str)
+async def on_shutdown(bot: Bot) -> None:
+    assert isinstance(bot['album_forwarder'], AlbumForwarder)
+    await bot['album_forwarder'].stop()
 
 
 def main():
@@ -522,7 +472,7 @@ def main():
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         logging.getLogger('asyncio').setLevel(logging.ERROR)
         logging.getLogger('aiosqlite').setLevel(logging.INFO)
-        logger.debug('PYTHONOPTIMIZE=%s', os.environ['PYTHONOPTIMIZE'])
+        logger.debug('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
 
@@ -539,7 +489,9 @@ def main():
         else:
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-    asyncio.run(feedback_bot.poll(on_startup=on_startup), debug=debug)
+    asyncio.run(feedback_bot.poll(on_startup=on_startup,
+                                  on_shutdown=on_shutdown),
+                debug=debug)
 
 
 if __name__ == '__main__':  # pragma: nocover
