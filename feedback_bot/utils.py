@@ -29,23 +29,23 @@ def user_link(chat: Chat) -> str:
     return f'<a href="tg://user?id={chat.id}">{user_name(chat)}</a>'
 
 
-async def set_chat(_storage: BaseStorage, key: str,
+async def set_chat(storage: BaseStorage, key: str,
                    chat: Optional[Chat] = None) -> None:
-    await _storage.set(key, chat.to_dict() if chat is not None else None)
+    await storage.set(key, chat.to_dict() if chat is not None else None)
 
 
-async def get_chat(_storage: BaseStorage, key: str) -> Optional[Chat]:
-    data = await _storage.get(key)
+async def get_chat(storage: BaseStorage, key: str) -> Optional[Chat]:
+    data = await storage.get(key)
     return Chat.from_dict(data) if data is not None else None
 
 
-async def set_chat_list(_storage: BaseStorage, key: str,
+async def set_chat_list(storage: BaseStorage, key: str,
                         chat_list: List[Chat]) -> None:
-    await _storage.set(key, [chat.to_dict() for chat in chat_list])
+    await storage.set(key, [chat.to_dict() for chat in chat_list])
 
 
-async def get_chat_list(_storage: BaseStorage, key: str) -> List[Chat]:
-    return [Chat.from_dict(item) for item in await _storage.get(key)]
+async def get_chat_list(storage: BaseStorage, key: str) -> List[Chat]:
+    return [Chat.from_dict(item) for item in await storage.get(key)]
 
 
 async def send_from_message(bot: Bot, chat_id: int, from_chat: Chat) -> None:
@@ -53,7 +53,7 @@ async def send_from_message(bot: Bot, chat_id: int, from_chat: Chat) -> None:
                            parse_mode=ParseMode.HTML)
 
 
-@attr.s(slots=True, frozen=True, auto_attribs=True)
+@attr.s(slots=True)
 class FromUserFilter(BaseFilter):
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:
@@ -65,7 +65,7 @@ class FromUserFilter(BaseFilter):
                 update.message.from_.username != bot['admin_username'])
 
 
-@attr.s(slots=True, frozen=True, auto_attribs=True)
+@attr.s(slots=True)
 class FromAdminFilter(BaseFilter):
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:
@@ -157,7 +157,7 @@ class AlbumForwarder:
                 await send_from_message(self._bot, chat_id, from_chat)
             await self._bot.send_media_group(chat_id, media)
             await self._bot.send_message(
-                from_chat.id, f'Переслано элементов: {len(media)}')
+                from_chat.id, f'Переслано элементов группы: {len(media)}')
             logger.debug('Forwarded %d media group items', len(media))
         elif from_chat is not None:
             await self._bot.send_message(
