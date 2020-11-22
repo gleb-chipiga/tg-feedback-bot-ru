@@ -208,7 +208,7 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
     logger.info('Reply command from admin "%s"',
                 update.message.from_.to_dict())
     group_chat = await get_chat(bot.storage, 'group_chat')
-    if await get_chat(bot.storage, 'group_chat') is not None:
+    if group_chat is not None:
         await bot.send_message(
             update.message.chat.id,
             f'Принимаю сообщения в группе <b>{group_chat.title}</b>.',
