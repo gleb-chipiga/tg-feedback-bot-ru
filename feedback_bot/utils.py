@@ -10,23 +10,24 @@ from aiojobs_protocols import SchedulerProtocol
 from aiotgbot import (BaseFilter, BaseStorage, Bot, BotUpdate, Chat, Message,
                       ParseMode)
 from aiotgbot.api_types import (InputMediaAudio, InputMediaDocument,
-                                InputMediaPhoto, InputMediaVideo)
+                                InputMediaPhoto, InputMediaVideo, User)
 
 logger = logging.getLogger('feedback_bot')
 
 ALBUM_WAIT_TIMEOUT = 1
 
 
-def user_name(chat: Chat) -> str:
-    assert chat.first_name is not None
-    if chat.last_name is not None:
-        return f'{chat.first_name} {chat.last_name}'
+def user_name(user_chat: Union[User, Chat]) -> str:
+    if user_chat.first_name is None:
+        raise RuntimeError('First name of private chat must be not empty')
+    if user_chat.last_name is not None:
+        return f'{user_chat.first_name} {user_chat.last_name}'
     else:
-        return chat.first_name
+        return user_chat.first_name
 
 
-def user_link(chat: Chat) -> str:
-    return f'<a href="tg://user?id={chat.id}">{user_name(chat)}</a>'
+def user_link(user_chat: Union[User, Chat]) -> str:
+    return f'<a href="tg://user?id={user_chat.id}">{user_name(user_chat)}</a>'
 
 
 async def set_chat(storage: BaseStorage, key: str,

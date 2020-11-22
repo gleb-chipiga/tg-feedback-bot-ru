@@ -235,8 +235,15 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
                                'Не принимаю сообщения.')
         logger.debug('Ignore reply command in group')
         return
-    if await bot.storage.get('wait_reply_from_id') is not None:
-        await bot.send_message(update.message.chat.id, 'Уже жду сообщение.')
+    wait_reply_from_id = await bot.storage.get('wait_reply_from_id')
+    if wait_reply_from_id is not None:
+        member = await bot.get_chat_member(update.message.chat.id,
+                                           wait_reply_from_id)
+        await bot.send_message(
+            update.message.chat.id,
+            f'Уже жду сообщение от {user_link(member.user)}.',
+            parse_mode=ParseMode.HTML
+        )
         logger.debug('Already wait message. Ignore command')
         return
 
