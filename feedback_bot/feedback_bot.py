@@ -1,20 +1,27 @@
 import asyncio
 import logging
 import re
+import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Final, Tuple, Union
 
 from aiotgbot import (Bot, BotBlocked, BotUpdate, ContentType, GroupChatFilter,
                       HandlerTable, InlineKeyboardButton, InlineKeyboardMarkup,
                       Message, ParseMode, PrivateChatFilter, TelegramError)
+from aiotgbot import __version__ as aiotgbot_version
 from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
 
+from . import __version__ as self_version
 from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
                     get_chat_list, path, send_from_message, set_chat,
                     set_chat_list, user_link, user_name)
 
 logger = logging.getLogger('feedback_bot')
+
+PYTHON_VERSION = '{0.major}.{0.minor}.{0.micro}'.format(sys.version_info)
+VERSION = (f'Python/{PYTHON_VERSION} aiotgbot/{aiotgbot_version} '
+           f'feedback-bot/{self_version}')
 
 COMMANDS: Final[Tuple[BotCommand, ...]] = (
     BotCommand('start', 'Начать работу'),
@@ -535,6 +542,7 @@ def main():
         logger.debug('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
+    logger.info(VERSION)
 
     storage = SQLiteStorage(args.storage_path)
     feedback_bot = Bot(args.token, handlers, storage)
