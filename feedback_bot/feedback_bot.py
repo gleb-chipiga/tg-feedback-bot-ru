@@ -1,11 +1,13 @@
 import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING, Union
+from datetime import datetime
+from typing import TYPE_CHECKING, Final, Tuple, Union
 
 from aiotgbot import (Bot, BotBlocked, BotUpdate, ContentType, GroupChatFilter,
                       HandlerTable, InlineKeyboardButton, InlineKeyboardMarkup,
                       Message, ParseMode, PrivateChatFilter, TelegramError)
+from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
@@ -13,6 +15,13 @@ from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
                     set_chat_list, user_link, user_name)
 
 logger = logging.getLogger('feedback_bot')
+
+COMMANDS: Final[Tuple[BotCommand, ...]] = (
+    BotCommand('start', 'Начать работу'),
+    BotCommand('help', 'Помощь'),
+    BotCommand('stop', 'Остановить')
+)
+
 
 handlers = HandlerTable()
 
@@ -23,6 +32,7 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Start command from "%s"', update.message.from_.to_dict())
+    await bot.storage.delete(f'stopped-{update.message.from_.id}')
     await set_chat(bot.storage, f'chat-{update.message.chat.id}',
                    update.message.chat)
     await bot.send_message(update.message.chat.id,
@@ -37,6 +47,16 @@ async def user_help_command(bot: Bot, update: BotUpdate) -> None:
     logger.info('Help command from "%s"', update.message.from_.to_dict())
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос.')
+
+
+@handlers.message(commands=['stop'],
+                  filters=[PrivateChatFilter(), FromUserFilter()])
+async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
+    assert update.message is not None
+    assert update.message.from_ is not None
+    logger.info('Stop command from "%s"', update.message.from_.to_dict())
+    await bot.storage.set(f'stopped-{update.message.from_.id}',
+                          datetime.now().isoformat())
 
 
 @handlers.message(commands=['start'],
@@ -298,16 +318,26 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
 async def send_user_message(bot: Bot, message: Message) -> None:
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
     current_chat = await get_chat(bot.storage, 'current_chat')
-
     if current_chat is None and message.media_group_id is not None:
         await bot['album_forwarder'].add_message(message)
         logger.debug('Add next media group item to forwarder')
         return
-    elif current_chat is None:
+    if current_chat is None:
         await bot.send_message(message.chat.id, 'Нет текущего пользователя')
         logger.debug('Skip message to user: no current user')
         return
-    elif message.media_group_id is not None:
+
+    stopped = await bot.storage.get(f'stopped-{current_chat.id}')
+    if stopped is not None:
+        dt = datetime.fromisoformat(stopped)
+        await bot.send_message(
+            message.chat.id,
+            f'{user_link(current_chat)} меня заблокировал '
+            f'{dt:%Y-%m-%d %H:%M:%S}.',
+            parse_mode=ParseMode.HTML)
+        return
+
+    if message.media_group_id is not None:
         await bot['album_forwarder'].add_message(message, current_chat.id)
         logger.debug('Add first media group item to forwarder')
         return
@@ -432,6 +462,11 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set('group_chat')
     bot['album_forwarder'] = AlbumForwarder(bot)
     await bot['album_forwarder'].start()
+
+    commands = await bot.get_my_commands()
+    if commands != COMMANDS:
+        logger.info('Update bot commands')
+        await bot.set_my_commands(COMMANDS)
 
 
 async def on_shutdown(bot: Bot) -> None:
