@@ -207,9 +207,13 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Reply command from admin "%s"',
                 update.message.from_.to_dict())
+    group_chat = await get_chat(bot.storage, 'group_chat')
     if await get_chat(bot.storage, 'group_chat') is not None:
-        await bot.send_message(update.message.chat.id,
-                               'Принимаю сообщения в группе.')
+        await bot.send_message(
+            update.message.chat.id,
+            f'Принимаю сообщения в группе <b>{group_chat.title}</b>.',
+            parse_mode=ParseMode.HTML
+        )
         logger.debug('Ignore reply command in private chat')
         return
     if await bot.storage.get('wait_reply_from_id') is not None:
