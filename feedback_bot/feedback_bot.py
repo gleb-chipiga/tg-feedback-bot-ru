@@ -471,7 +471,7 @@ async def on_startup(bot: Bot) -> None:
     bot['album_forwarder'] = AlbumForwarder(bot)
     await bot['album_forwarder'].start()
 
-    if COMMANDS != (await bot.get_my_commands()):
+    if COMMANDS != await bot.get_my_commands():
         logger.info('Update bot commands')
         await bot.set_my_commands(COMMANDS)
 
