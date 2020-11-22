@@ -11,6 +11,7 @@ from aiotgbot import (Bot, BotBlocked, BotUpdate, ContentType, GroupChatFilter,
 from aiotgbot import __version__ as aiotgbot_version
 from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
+from more_itertools import chunked
 
 from . import __version__ as self_version
 from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
@@ -195,14 +196,17 @@ async def group_help_command(bot: Bot, update: BotUpdate) -> None:
 
 
 async def reply_menu(bot: Bot, chat_id: Union[int, str]) -> None:
+    if await bot.storage.get('chat_list') is None:
+        await bot.send_message(chat_id, 'Некому отвечать.')
+        return
+
+    chat_list = await get_chat_list(bot.storage, 'chat_list')
     await bot.send_message(
-        chat_id,
-        ('Выберите пользователя для ответа.'
-         if await bot.storage.get('chat_list') else 'Некому отвечать.'),
+        chat_id, 'Выберите пользователя для ответа.',
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[[InlineKeyboardButton(
                 user_name(chat), callback_data=f'reply-to-{chat.id}'
-            )] for chat in await get_chat_list(bot.storage, 'chat_list')]
+            ) for chat in chunk] for chunk in chunked(chat_list, 2)]
         )
     )
 
