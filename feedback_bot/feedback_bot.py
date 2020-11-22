@@ -36,7 +36,10 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     await set_chat(bot.storage, f'chat-{update.message.chat.id}',
                    update.message.chat)
     await bot.send_message(update.message.chat.id,
-                           'Пришлите сообщение или задайте вопрос.')
+                           'Пришлите сообщение или задайте вопрос. '
+                           'Также вы можете использовать следующие команды:\n'
+                           '/help - помощь\n'
+                           '/stop - остановить и не получать больше сообщения')
 
 
 @handlers.message(commands=['help'],
@@ -46,7 +49,10 @@ async def user_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Help command from "%s"', update.message.from_.to_dict())
     await bot.send_message(update.message.chat.id,
-                           'Пришлите сообщение или задайте вопрос.')
+                           'Пришлите сообщение или задайте вопрос. '
+                           'Также вы можете использовать следующие команды:\n'
+                           '/help - помощь\n'
+                           '/stop - остановить и не получать больше сообщения')
 
 
 @handlers.message(commands=['stop'],
@@ -463,8 +469,7 @@ async def on_startup(bot: Bot) -> None:
     bot['album_forwarder'] = AlbumForwarder(bot)
     await bot['album_forwarder'].start()
 
-    commands = await bot.get_my_commands()
-    if commands != COMMANDS:
+    if COMMANDS != (await bot.get_my_commands()):
         logger.info('Update bot commands')
         await bot.set_my_commands(COMMANDS)
 
