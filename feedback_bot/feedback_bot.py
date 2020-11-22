@@ -287,6 +287,7 @@ async def group_left_member(bot: Bot, update: BotUpdate):
 
 @handlers.message(filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_message(bot: Bot, update: BotUpdate) -> None:
+    assert 'album_forwarder' in bot
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
     assert update.message is not None
     assert update.message.from_ is not None
@@ -322,6 +323,7 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
 
 
 async def send_user_message(bot: Bot, message: Message) -> None:
+    assert 'album_forwarder' in bot
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
     current_chat = await get_chat(bot.storage, 'current_chat')
     if current_chat is None and message.media_group_id is not None:
@@ -475,6 +477,7 @@ async def on_startup(bot: Bot) -> None:
 
 
 async def on_shutdown(bot: Bot) -> None:
+    assert 'album_forwarder' in bot
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
     await bot['album_forwarder'].stop()
 
