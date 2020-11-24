@@ -2,21 +2,20 @@ import asyncio
 import logging
 import re
 import sys
-from datetime import datetime
-from typing import TYPE_CHECKING, Final, Tuple, Union
+from typing import TYPE_CHECKING, Final, Tuple
 
-from aiotgbot import (Bot, BotBlocked, BotUpdate, ContentType, GroupChatFilter,
-                      HandlerTable, InlineKeyboardButton, InlineKeyboardMarkup,
-                      Message, ParseMode, PrivateChatFilter, TelegramError)
+from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
+                      HandlerTable, ParseMode, PrivateChatFilter,
+                      TelegramError)
 from aiotgbot import __version__ as aiotgbot_version
 from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
-from more_itertools import chunked
 
 from . import __version__ as self_version
-from .utils import (AlbumForwarder, FromAdminFilter, FromUserFilter, get_chat,
-                    get_chat_list, path, send_from_message, set_chat,
-                    set_chat_list, user_link, user_name)
+from .helpers import (AlbumForwarder, FromAdminFilter, FromUserFilter, Stopped,
+                      add_chat_to_list, chat_key, get_chat, path,
+                      remove_chat_from_list, reply_menu, send_from_message,
+                      send_user_message, set_chat, user_link)
 
 logger = logging.getLogger('feedback_bot')
 
@@ -40,8 +39,8 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Start command from "%s"', update.message.from_.to_dict())
-    await bot.storage.delete(f'stopped-{update.message.from_.id}')
-    await set_chat(bot.storage, f'chat-{update.message.chat.id}',
+    await Stopped.delete(bot, update.message.from_.id)
+    await set_chat(bot.storage, chat_key(update.message.chat.id),
                    update.message.chat)
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос. '
@@ -69,8 +68,24 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Stop command from "%s"', update.message.from_.to_dict())
-    await bot.storage.set(f'stopped-{update.message.from_.id}',
-                          datetime.now().isoformat())
+    stopped = Stopped()
+    await stopped.set(bot, update.message.from_.id)
+    await remove_chat_from_list(bot, update.message.from_.id)
+    group_chat = await get_chat(bot.storage, 'group_chat')
+    if group_chat is not None:
+        notify_chat = group_chat
+    else:
+        notify_chat = await bot.storage.get('admin_chat_id')
+    assert notify_chat is not None
+    await bot.send_message(
+        notify_chat.id,
+        f'{user_link(update.message.from_)} меня заблокировал '
+        f'{stopped.dt:%Y-%m-%d %H:%M:%S}.',
+        parse_mode=ParseMode.HTML)
+    current_chat = await get_chat(bot.storage, 'current_chat')
+    if current_chat is not None and current_chat.id == update.message.from_.id:
+        await bot.storage.set('wait_reply_from_id')
+        await set_chat(bot.storage, 'current_chat')
 
 
 @handlers.message(commands=['start'],
@@ -195,22 +210,6 @@ async def group_help_command(bot: Bot, update: BotUpdate) -> None:
                            '/reply - ответить пользователю')
 
 
-async def reply_menu(bot: Bot, chat_id: Union[int, str]) -> None:
-    if await bot.storage.get('chat_list') is None:
-        await bot.send_message(chat_id, 'Некому отвечать.')
-        return
-
-    chat_list = await get_chat_list(bot.storage, 'chat_list')
-    await bot.send_message(
-        chat_id, 'Выберите пользователя для ответа.',
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(
-                user_name(chat), callback_data=f'reply-to-{chat.id}'
-            ) for chat in chunk] for chunk in chunked(chat_list, 2)]
-        )
-    )
-
-
 @handlers.message(commands=['reply'],
                   filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
@@ -315,10 +314,13 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
     assert update.message is not None
     assert update.message.from_ is not None
-
     logger.info('Message from "%s"', update.message.from_.to_dict())
-    await bot.storage.set(f'chat-{update.message.chat.id}',
-                          update.message.chat.to_dict())
+    await set_chat(bot.storage, chat_key(update.message.chat.id),
+                   update.message.chat)
+    stopped = await Stopped.get(bot, update.message.chat.id)
+    if stopped is not None:
+        await Stopped.delete(bot, update.message.chat.id)
+        await bot.send_message(update.message.chat.id, 'С возвращением!')
 
     group_chat = await get_chat(bot.storage, 'group_chat')
     if group_chat is not None:
@@ -338,61 +340,7 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
         await bot.forward_message(forward_chat_id, update.message.chat.id,
                                   update.message.message_id)
 
-    chat_list = await get_chat_list(bot.storage, 'chat_list')
-    if all(item.id != update.message.chat.id for item in chat_list):
-        chat_list.append(update.message.chat)
-        if len(chat_list) > bot['chat_list_size']:
-            chat_list.pop(0)
-        await set_chat_list(bot.storage, 'chat_list', chat_list)
-
-
-async def send_user_message(bot: Bot, message: Message) -> None:
-    assert 'album_forwarder' in bot
-    assert isinstance(bot['album_forwarder'], AlbumForwarder)
-    current_chat = await get_chat(bot.storage, 'current_chat')
-    if current_chat is None and message.media_group_id is not None:
-        await bot['album_forwarder'].add_message(message)
-        logger.debug('Add next media group item to forwarder')
-        return
-    if current_chat is None:
-        await bot.send_message(message.chat.id, 'Нет текущего пользователя')
-        logger.debug('Skip message to user: no current user')
-        return
-
-    stopped = await bot.storage.get(f'stopped-{current_chat.id}')
-    if stopped is not None:
-        dt = datetime.fromisoformat(stopped)
-        await bot.send_message(
-            message.chat.id,
-            f'{user_link(current_chat)} меня заблокировал '
-            f'{dt:%Y-%m-%d %H:%M:%S}.',
-            parse_mode=ParseMode.HTML)
-        return
-
-    if message.media_group_id is not None:
-        await bot['album_forwarder'].add_message(message, current_chat.id)
-        logger.debug('Add first media group item to forwarder')
-        return
-
-    logger.debug('Send message to "%s"', current_chat.to_dict())
-    try:
-        await bot.copy_message(current_chat.id, message.chat.id,
-                               message.message_id)
-    except BotBlocked:
-        chat_list = await get_chat_list(bot.storage, 'chat_list')
-        chat_list = [item for item in chat_list if item.id != current_chat.id]
-        await set_chat_list(bot.storage, 'chat_list', chat_list)
-        await bot.storage.delete(f'chat-{current_chat.id}')
-        await bot.send_message(
-            message.chat.id, f'{user_link(current_chat)} меня заблокировал.',
-            parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-        logger.info('Blocked by user "%s"', current_chat.to_dict())
-        return
-    else:
-        await bot.send_message(
-            message.chat.id,
-            f'Сообщение отправлено {user_link(current_chat)}.',
-            parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await add_chat_to_list(bot, update.message.chat)
 
 
 @handlers.message(filters=[GroupChatFilter()])
@@ -455,26 +403,26 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     data_match = re.match(r'^reply-to-(?P<chat_id>\d+)$',
                           update.callback_query.data)
     assert data_match is not None, 'Reply to data not match format'
-
-    if not await get_chat(bot.storage, f'chat-{data_match.group("chat_id")}'):
+    current_chat_id = int(data_match.group('chat_id'))
+    current_chat = await get_chat(bot.storage, chat_key(current_chat_id))
+    if current_chat is None:
         await bot.edit_message_text(
-            'Сообщение не отправлено. Пользователь неактивен.',
+            'Ошибка. Сообщение не отправить.',
             chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id)
-        logger.info('Skip message sending fo user inactive from "%s"',
+        logger.info('Skip message sending to unknown user from "%s"',
                     update.callback_query.from_.to_dict())
         return
-
-    await bot.storage.set('wait_reply_from_id', update.callback_query.from_.id)
-    current_key = f'chat-{data_match.group("chat_id")}'
-    current_chat = await get_chat(bot.storage, current_key)
-    if current_chat is None:
-        logger.info('Selected chat not found in storage "%s"', current_key)
+    stopped = await Stopped.get(bot, current_chat_id)
+    if stopped is not None:
         await bot.edit_message_text(
-            'Ошибка.', chat_id=update.callback_query.message.chat.id,
+            f'{user_link(current_chat)} меня заблокировал '
+            f'{stopped.dt:%Y-%m-%d %H:%M:%S}.',
+            chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id,
-            disable_web_page_preview=True)
+            parse_mode=ParseMode.HTML)
         return
+    await bot.storage.set('wait_reply_from_id', update.callback_query.from_.id)
     await set_chat(bot.storage, 'current_chat', current_chat)
     await bot.edit_message_text(
         f'Введите сообщение для {user_link(current_chat)}.',
@@ -492,6 +440,7 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set('admin_chat_id')
     if await bot.storage.get('group_chat') is None:
         await bot.storage.set('group_chat')
+
     bot['album_forwarder'] = AlbumForwarder(bot)
     await bot['album_forwarder'].start()
 
