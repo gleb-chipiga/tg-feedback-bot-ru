@@ -311,8 +311,8 @@ async def group_left_member(bot: Bot, update: BotUpdate):
 
 @handlers.message(filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_message(bot: Bot, update: BotUpdate) -> None:
-    assert ALBUM_FORWARDER_KEY in bot
-    assert isinstance(bot[ALBUM_FORWARDER_KEY], AlbumForwarder)
+    album_forwarder = bot.get(ALBUM_FORWARDER_KEY)
+    assert isinstance(album_forwarder, AlbumForwarder)
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Message from "%s"', update.message.from_.to_dict())
@@ -335,7 +335,7 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
         await send_from_message(bot, forward_chat_id, update.message.chat)
 
     if update.message.media_group_id is not None:
-        await bot[ALBUM_FORWARDER_KEY].add_message(
+        await album_forwarder.add_message(
             update.message, forward_chat_id, add_from_info=True)
     else:
         await bot.forward_message(forward_chat_id, update.message.chat.id,
@@ -442,8 +442,9 @@ async def on_startup(bot: Bot) -> None:
     if await bot.storage.get(GROUP_CHAT_KEY) is None:
         await bot.storage.set(GROUP_CHAT_KEY)
 
-    bot[ALBUM_FORWARDER_KEY] = AlbumForwarder(bot)
-    await bot[ALBUM_FORWARDER_KEY].start()
+    album_forwarder = AlbumForwarder(bot)
+    await album_forwarder.start()
+    bot[ALBUM_FORWARDER_KEY] = album_forwarder
 
     if COMMANDS != await bot.get_my_commands():
         logger.info('Update bot commands')
@@ -451,9 +452,9 @@ async def on_startup(bot: Bot) -> None:
 
 
 async def on_shutdown(bot: Bot) -> None:
-    assert ALBUM_FORWARDER_KEY in bot
-    assert isinstance(bot[ALBUM_FORWARDER_KEY], AlbumForwarder)
-    await bot[ALBUM_FORWARDER_KEY].stop()
+    album_forwarder = bot.get(ALBUM_FORWARDER_KEY)
+    assert isinstance(album_forwarder, AlbumForwarder)
+    await album_forwarder.stop()
 
 
 def main():
