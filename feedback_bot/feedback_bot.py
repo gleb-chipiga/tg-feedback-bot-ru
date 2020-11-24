@@ -9,12 +9,11 @@ from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
 from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
 
-from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_SIZE_KEY, AlbumForwarder,
-                      FromAdminFilter, FromUserFilter, Stopped,
-                      add_chat_to_list, chat_key, get_chat, get_chat_list,
-                      get_software, path, remove_chat_from_list, reply_menu,
-                      send_from_message, send_user_message, set_chat,
-                      set_chat_list, user_link)
+from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
+                      AlbumForwarder, FromAdminFilter, FromUserFilter, Stopped,
+                      add_chat_to_list, chat_key, get_chat, get_software, path,
+                      remove_chat_from_list, reply_menu, send_from_message,
+                      send_user_message, set_chat, user_link)
 
 logger = logging.getLogger('feedback_bot')
 
@@ -434,8 +433,8 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
 
 
 async def on_startup(bot: Bot) -> None:
-    if await get_chat_list(bot) is None:
-        await set_chat_list(bot, [])
+    if await bot.storage.get(CHAT_LIST_KEY) is None:
+        await bot.storage.set(CHAT_LIST_KEY, [])
     if await bot.storage.get(CURRENT_CHAT_KEY) is None:
         await bot.storage.set(CURRENT_CHAT_KEY)
     if await bot.storage.get(ADMIN_CHAT_ID_KEY) is None:
