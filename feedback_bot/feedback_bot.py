@@ -493,9 +493,9 @@ def main():
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         logging.getLogger('asyncio').setLevel(logging.ERROR)
         logging.getLogger('aiosqlite').setLevel(logging.INFO)
-        logger.debug('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
+    logger.info('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
     logger.info(SOFTWARE)
 
     storage = SQLiteStorage(args.storage_path)
