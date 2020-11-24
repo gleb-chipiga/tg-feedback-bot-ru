@@ -472,7 +472,7 @@ def main():
                         default=os.environ.get('TG_BOT_TOKEN', ''),
                         type=str, help='aiotgbot bot API token')
     parser.add_argument('-l', dest='chat_list_size', type=int,
-                        default=os.environ.get('CHAT_LIST_SIZE', 5),
+                        default=os.environ.get('CHAT_LIST_SIZE', 10),
                         help='size of chat list')
     parser.add_argument('-d', dest='debug', action='store_true',
                         help='enable debug mode')
