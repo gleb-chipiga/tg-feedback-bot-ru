@@ -81,7 +81,7 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     await bot.send_message(
         notify_chat.id,
         f'{user_link(update.message.from_)} меня заблокировал '
-        f'{stopped.dt:%Y-%m-%d %H:%M:%S}.',
+        f'{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.',
         parse_mode=ParseMode.HTML)
     current_chat = await get_chat(bot.storage, CURRENT_CHAT_KEY)
     if current_chat is not None and current_chat.id == update.message.from_.id:
@@ -417,7 +417,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     if stopped is not None:
         await bot.edit_message_text(
             f'{user_link(current_chat)} меня заблокировал '
-            f'{stopped.dt:%Y-%m-%d %H:%M:%S}.',
+            f'{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.',
             chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id,
             parse_mode=ParseMode.HTML)

@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from datetime import datetime
+import time
+from datetime import datetime, timedelta, timezone
 from operator import attrgetter
 from pathlib import Path
 from typing import Dict, Final, List, Optional, Union
@@ -127,7 +128,7 @@ async def send_user_message(bot: Bot, message: Message) -> None:
         await bot.send_message(
             message.chat.id,
             f'{user_link(current_chat)} меня заблокировал '
-            f'{stopped.dt:%Y-%m-%d %H:%M:%S}.',
+            f'{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.',
             parse_mode=ParseMode.HTML)
         return
 
@@ -287,9 +288,13 @@ class AlbumForwarder:
         logger.exception('Album forward error', exc_info=context['exception'])
 
 
+def _now_with_tz() -> datetime:
+    return datetime.now(timezone(timedelta(seconds=-time.timezone)))
+
+
 @attr.s(slots=True, frozen=True, auto_attribs=True)
 class Stopped:
-    dt: datetime = attr.ib(factory=datetime.now)
+    dt: datetime = attr.ib(factory=_now_with_tz)
     blocked: bool = False
 
     @staticmethod
