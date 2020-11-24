@@ -18,6 +18,15 @@ from more_itertools import chunked
 logger = logging.getLogger('feedback_bot')
 
 ALBUM_WAIT_TIMEOUT = 1  # seconds
+CHAT_LIST_KEY: Final[str] = 'chat_list'
+CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
+
+
+def get_software() -> str:
+    import aiotgbot.helpers
+
+    from . import __version__
+    return f'{aiotgbot.helpers.get_software()} feedback-bot/{__version__}'
 
 
 def path(_str: str) -> Path:
@@ -52,21 +61,24 @@ async def get_chat(storage: BaseStorage, key: str) -> Optional[Chat]:
 
 
 async def get_chat_list(bot: Bot) -> List[Chat]:
-    chat_list = await bot.storage.get('chat_list')
+    chat_list = await bot.storage.get(CHAT_LIST_KEY)
     if chat_list is None:
         raise RuntimeError('Chat list not in storage')
     return [Chat.from_dict(item) for item in chat_list]
 
 
 async def set_chat_list(bot: Bot, chat_list: List[Chat]) -> None:
-    await bot.storage.set('chat_list', [chat.to_dict() for chat in chat_list])
+    await bot.storage.set(
+        CHAT_LIST_KEY,
+        [chat.to_dict() for chat in chat_list]
+    )
 
 
 async def add_chat_to_list(bot: Bot, chat: Chat) -> None:
     chat_list = await get_chat_list(bot)
     if all(item.id != chat.id for item in chat_list):
         chat_list.append(chat)
-        if len(chat_list) > bot['chat_list_size']:
+        if len(chat_list) > bot[CHAT_LIST_SIZE_KEY]:
             chat_list.pop(0)
         await set_chat_list(bot, chat_list)
 
