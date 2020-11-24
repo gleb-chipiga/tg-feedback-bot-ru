@@ -24,8 +24,7 @@ CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
 
 
 def get_software() -> str:
-    import aiotgbot.helpers
-
+    import aiotgbot.helpers  # isort:skip
     from . import __version__
     return f'{aiotgbot.helpers.get_software()} feedback-bot/{__version__}'
 
