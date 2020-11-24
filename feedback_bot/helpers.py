@@ -21,6 +21,7 @@ logger = logging.getLogger('feedback_bot')
 ALBUM_WAIT_TIMEOUT = 1  # seconds
 CHAT_LIST_KEY: Final[str] = 'chat_list'
 CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
+ADMIN_USERNAME_KEY: Final[str] = 'admin_username'
 
 
 def get_software() -> str:
@@ -159,24 +160,24 @@ async def send_user_message(bot: Bot, message: Message) -> None:
 class FromUserFilter(BaseFilter):
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:
-        if 'admin_username' not in bot:
+        if ADMIN_USERNAME_KEY not in bot:
             raise RuntimeError('Admin username not set')
 
         return (update.message is not None and
                 update.message.from_ is not None and
-                update.message.from_.username != bot['admin_username'])
+                update.message.from_.username != bot[ADMIN_USERNAME_KEY])
 
 
 @attr.s(slots=True)
 class FromAdminFilter(BaseFilter):
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:
-        if 'admin_username' not in bot:
+        if ADMIN_USERNAME_KEY not in bot:
             raise RuntimeError('Admin username not set')
 
         return (update.message is not None and
                 update.message.from_ is not None and
-                update.message.from_.username == bot['admin_username'])
+                update.message.from_.username == bot[ADMIN_USERNAME_KEY])
 
 
 class AlbumForwarder:

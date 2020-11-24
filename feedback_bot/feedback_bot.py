@@ -9,11 +9,12 @@ from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
 from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
 
-from .helpers import (CHAT_LIST_SIZE_KEY, AlbumForwarder, FromAdminFilter,
-                      FromUserFilter, Stopped, add_chat_to_list, chat_key,
-                      get_chat, get_chat_list, get_software, path,
-                      remove_chat_from_list, reply_menu, send_from_message,
-                      send_user_message, set_chat, set_chat_list, user_link)
+from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_SIZE_KEY, AlbumForwarder,
+                      FromAdminFilter, FromUserFilter, Stopped,
+                      add_chat_to_list, chat_key, get_chat, get_chat_list,
+                      get_software, path, remove_chat_from_list, reply_menu,
+                      send_from_message, send_user_message, set_chat,
+                      set_chat_list, user_link)
 
 logger = logging.getLogger('feedback_bot')
 
@@ -471,7 +472,7 @@ def main():
                         default=os.environ.get('TG_BOT_TOKEN', ''),
                         type=str, help='aiotgbot bot API token')
     parser.add_argument('-l', dest='chat_list_size', type=int,
-                        default=os.environ.get(CHAT_LIST_SIZE_KEY, 5),
+                        default=os.environ.get('CHAT_LIST_SIZE', 5),
                         help='size of chat list')
     parser.add_argument('-d', dest='debug', action='store_true',
                         help='enable debug mode')
@@ -501,7 +502,7 @@ def main():
 
     storage = SQLiteStorage(args.storage_path)
     feedback_bot = Bot(args.token, handlers, storage)
-    feedback_bot['admin_username'] = args.admin_username
+    feedback_bot[ADMIN_USERNAME_KEY] = args.admin_username
     feedback_bot[CHAT_LIST_SIZE_KEY] = args.chat_list_size
 
     if not TYPE_CHECKING:
