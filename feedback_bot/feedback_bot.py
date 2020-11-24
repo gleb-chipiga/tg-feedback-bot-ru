@@ -23,7 +23,7 @@ COMMANDS: Final[Tuple[BotCommand, ...]] = (
     BotCommand('help', 'Помощь'),
     BotCommand('stop', 'Остановить')
 )
-REPLY_TO_RXP: Final[re.Pattern] = re.compile(r'^reply-to-(?P<chat_id>\d+)$')
+REPLY_RXP: Final[re.Pattern] = re.compile(r'^reply-to-(?P<chat_id>\d+)$')
 ALBUM_FORWARDER_KEY: Final[str] = 'album_forwarder'
 GROUP_CHAT_KEY: Final[str] = 'group_chat'
 ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
@@ -392,7 +392,7 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
     await set_chat(bot.storage, CURRENT_CHAT_KEY)
 
 
-@handlers.callback_query(data_match=REPLY_TO_RXP)
+@handlers.callback_query(data_match=REPLY_RXP)
 async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     assert update.callback_query is not None
     assert update.callback_query.data is not None
@@ -401,7 +401,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
                 update.callback_query.from_.to_dict())
     await bot.answer_callback_query(update.callback_query.id)
 
-    data_match = re.match(REPLY_TO_RXP, update.callback_query.data)
+    data_match = REPLY_RXP.match(update.callback_query.data)
     assert data_match is not None, 'Reply to data not match format'
     current_chat_id = int(data_match.group('chat_id'))
     current_chat = await get_chat(bot.storage, chat_key(current_chat_id))
