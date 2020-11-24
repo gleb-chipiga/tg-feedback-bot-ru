@@ -272,22 +272,21 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.new_chat_members is not None
     logger.info('New group members message "%s"', update.message.chat)
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    me = await bot.get_me()
     for user in update.message.new_chat_members:
-        if user.username == (await bot.get_me()).username:
+        if user.id == me.id:
             await bot.send_message(
                 await bot.storage.get(ADMIN_CHAT_ID_KEY),
                 f'Добавлен в группу <b>{update.message.chat.title}</b>.',
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             logger.info('Bot added to grouip "%s"',
                         update.message.chat.to_dict())
-
+            group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
             if (
                 group_chat is not None and
                 group_chat.id != update.message.chat.id
             ):
                 await bot.leave_chat(update.message.chat.id)
-
             break
 
 
