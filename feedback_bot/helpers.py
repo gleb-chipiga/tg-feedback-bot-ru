@@ -58,6 +58,7 @@ async def set_chat(bot: Bot, key: str, chat: Optional[Chat] = None) -> None:
 
 async def get_chat(bot: Bot, key: str) -> Optional[Chat]:
     data = await bot.storage.get(key)
+    assert isinstance(data, dict)
     return Chat.from_dict(data) if data is not None else None
 
 
@@ -65,6 +66,8 @@ async def get_chat_list(bot: Bot) -> List[Chat]:
     chat_list = await bot.storage.get(CHAT_LIST_KEY)
     if chat_list is None:
         raise RuntimeError('Chat list not in storage')
+    assert isinstance(chat_list, list)
+    assert all(isinstance(item, dict) for item in chat_list)
     return [Chat.from_dict(item) for item in chat_list]
 
 
@@ -310,6 +313,7 @@ class Stopped:
     async def get(bot: Bot, chat_id: int) -> Optional['Stopped']:
         data = await bot.storage.get(Stopped._key(chat_id))
         if data is not None:
+            assert isinstance(data, dict)
             return Stopped(datetime.fromisoformat(data['dt']), data['error'])
         else:
             return None

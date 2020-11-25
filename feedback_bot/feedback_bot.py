@@ -75,13 +75,13 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     await stopped.set(bot, update.message.from_.id)
     await remove_chat_from_list(bot, update.message.from_.id)
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
-    if group_chat is not None:
-        notify_chat = group_chat
+    if group_chat is None:
+        notify_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+        assert isinstance(notify_chat_id, int)
     else:
-        notify_chat = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-    assert notify_chat is not None
+        notify_chat_id = group_chat.id
     await bot.send_message(
-        notify_chat.id,
+        notify_chat_id,
         f'{user_link(update.message.from_)} меня заблокировал '
         f'{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.',
         parse_mode=ParseMode.HTML)
@@ -195,6 +195,7 @@ async def group_start_command(bot: Bot, update: BotUpdate) -> None:
     await set_chat(bot, CURRENT_CHAT_KEY)
 
     admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+    assert isinstance(admin_chat_id, int)
     await bot.send_message(
         admin_chat_id, f'Запущен в <b>{update.message.chat.title}</b>.',
         parse_mode=ParseMode.HTML, disable_web_page_preview=True)
@@ -254,6 +255,7 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
         return
     wait_reply_from_id = await bot.storage.get(WAIT_REPLY_FROM_ID_KEY)
     if wait_reply_from_id is not None:
+        assert isinstance(wait_reply_from_id, int)
         member = await bot.get_chat_member(update.message.chat.id,
                                            wait_reply_from_id)
         member_link = (user_link(member.user) if member.user.username is None
@@ -277,8 +279,10 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
     me = await bot.get_me()
     for user in update.message.new_chat_members:
         if user.id == me.id:
+            admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+            assert isinstance(admin_chat_id, int)
             await bot.send_message(
-                await bot.storage.get(ADMIN_CHAT_ID_KEY),
+                admin_chat_id,
                 f'Добавлен в группу <b>{update.message.chat.title}</b>.',
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             logger.info('Bot added to grouip "%s"',
@@ -299,8 +303,10 @@ async def group_left_member(bot: Bot, update: BotUpdate):
     logger.info('Left group member message "%s"', update.message.to_dict())
     me = await bot.get_me()
     if update.message.left_chat_member.id == me.id:
+        admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+        assert isinstance(admin_chat_id, int)
         await bot.send_message(
-            await bot.storage.get(ADMIN_CHAT_ID_KEY),
+            admin_chat_id,
             f'Вышел из группы <b>{update.message.chat.title}</b>.',
             parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         logger.info('Leave chat "%s"', update.message.chat.title)
@@ -324,10 +330,11 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
         await bot.send_message(update.message.chat.id, 'С возвращением!')
 
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
-    if group_chat is not None:
-        forward_chat_id = group_chat.id
-    else:
+    if group_chat is None:
         forward_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+        assert isinstance(forward_chat_id, int)
+    else:
+        forward_chat_id = group_chat.id
 
     if update.message.audio is not None or update.message.sticker is not None:
         logger.info('Message from user "%s" contains audio or sticker',
