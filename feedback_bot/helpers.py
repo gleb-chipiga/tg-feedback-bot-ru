@@ -9,9 +9,9 @@ from typing import Dict, Final, List, Optional, Union
 import aiojobs
 import attr
 from aiojobs_protocols import SchedulerProtocol
-from aiotgbot import (BaseFilter, BaseStorage, Bot, BotBlocked, BotUpdate,
-                      Chat, InlineKeyboardButton, InlineKeyboardMarkup,
-                      Message, ParseMode)
+from aiotgbot import (BaseFilter, Bot, BotBlocked, BotUpdate, Chat,
+                      InlineKeyboardButton, InlineKeyboardMarkup, Message,
+                      ParseMode)
 from aiotgbot.api_types import (InputMediaAudio, InputMediaDocument,
                                 InputMediaPhoto, InputMediaVideo, User)
 from more_itertools import chunked
@@ -52,13 +52,12 @@ def chat_key(chat_id: int) -> str:
     return f'chat-{chat_id}'
 
 
-async def set_chat(storage: BaseStorage, key: str,
-                   chat: Optional[Chat] = None) -> None:
-    await storage.set(key, chat.to_dict() if chat is not None else None)
+async def set_chat(bot: Bot, key: str, chat: Optional[Chat] = None) -> None:
+    await bot.storage.set(key, chat.to_dict() if chat is not None else None)
 
 
-async def get_chat(storage: BaseStorage, key: str) -> Optional[Chat]:
-    data = await storage.get(key)
+async def get_chat(bot: Bot, key: str) -> Optional[Chat]:
+    data = await bot.storage.get(key)
     return Chat.from_dict(data) if data is not None else None
 
 
@@ -114,7 +113,7 @@ async def reply_menu(bot: Bot, chat_id: Union[int, str]) -> None:
 async def send_user_message(bot: Bot, message: Message) -> None:
     assert 'album_forwarder' in bot
     assert isinstance(bot['album_forwarder'], AlbumForwarder)
-    current_chat = await get_chat(bot.storage, 'current_chat')
+    current_chat = await get_chat(bot, 'current_chat')
     if current_chat is None and message.media_group_id is not None:
         await bot['album_forwarder'].add_message(message)
         logger.debug('Add next media group item to forwarder')

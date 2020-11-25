@@ -44,8 +44,7 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Start command from "%s"', update.message.from_.to_dict())
     await Stopped.delete(bot, update.message.from_.id)
-    await set_chat(bot.storage, chat_key(update.message.chat.id),
-                   update.message.chat)
+    await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос. '
                            'Также вы можете использовать следующие команды:\n'
@@ -75,7 +74,7 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     stopped = Stopped()
     await stopped.set(bot, update.message.from_.id)
     await remove_chat_from_list(bot, update.message.from_.id)
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
         notify_chat = group_chat
     else:
@@ -86,10 +85,10 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
         f'{user_link(update.message.from_)} меня заблокировал '
         f'{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.',
         parse_mode=ParseMode.HTML)
-    current_chat = await get_chat(bot.storage, CURRENT_CHAT_KEY)
+    current_chat = await get_chat(bot, CURRENT_CHAT_KEY)
     if current_chat is not None and current_chat.id == update.message.from_.id:
         await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
-        await set_chat(bot.storage, CURRENT_CHAT_KEY)
+        await set_chat(bot, CURRENT_CHAT_KEY)
 
 
 @handlers.message(commands=['start'],
@@ -138,7 +137,7 @@ async def add_to_group_command(bot: Bot, update: BotUpdate) -> None:
 
     logger.info('Add to group command from "%s"',
                 update.message.from_.to_dict())
-    if await get_chat(bot.storage, GROUP_CHAT_KEY) is not None:
+    if await get_chat(bot, GROUP_CHAT_KEY) is not None:
         logger.info('Already in group. Ignore command')
         await bot.send_message(update.message.chat.id, 'Уже в группе.')
         return
@@ -158,7 +157,7 @@ async def remove_from_group_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Remove from group command from "%s"',
                 update.message.from_.to_dict())
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
         logger.info('Not in group. Ignore command')
         await bot.send_message(update.message.chat.id, 'Не в группе.')
@@ -174,8 +173,8 @@ async def remove_from_group_command(bot: Bot, update: BotUpdate) -> None:
                            parse_mode=ParseMode.HTML,
                            disable_web_page_preview=True)
 
-    await set_chat(bot.storage, GROUP_CHAT_KEY)
-    await set_chat(bot.storage, CURRENT_CHAT_KEY)
+    await set_chat(bot, GROUP_CHAT_KEY)
+    await set_chat(bot, CURRENT_CHAT_KEY)
 
     logger.info('Removed from group "%s"', group_chat.to_dict())
 
@@ -187,13 +186,13 @@ async def group_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Start in group command from "%s"',
                 update.message.from_.to_dict())
-    if await get_chat(bot.storage, GROUP_CHAT_KEY):
+    if await get_chat(bot, GROUP_CHAT_KEY):
         logger.info('Attempt start in group "%s"',
                     update.message.chat.to_dict())
         return
 
-    await set_chat(bot.storage, GROUP_CHAT_KEY, update.message.chat)
-    await set_chat(bot.storage, CURRENT_CHAT_KEY)
+    await set_chat(bot, GROUP_CHAT_KEY, update.message.chat)
+    await set_chat(bot, CURRENT_CHAT_KEY)
 
     admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
     await bot.send_message(
@@ -221,7 +220,7 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Reply command from admin "%s"',
                 update.message.from_.to_dict())
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
         await bot.send_message(
             update.message.chat.id,
@@ -244,7 +243,7 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Reply in group command from "%s"',
                 update.message.from_.to_dict())
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
         await bot.leave_chat(update.message.chat.id)
         return
@@ -284,7 +283,7 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
                 parse_mode=ParseMode.HTML, disable_web_page_preview=True)
             logger.info('Bot added to grouip "%s"',
                         update.message.chat.to_dict())
-            group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+            group_chat = await get_chat(bot, GROUP_CHAT_KEY)
             if (
                 group_chat is not None and
                 group_chat.id != update.message.chat.id
@@ -305,9 +304,9 @@ async def group_left_member(bot: Bot, update: BotUpdate):
             f'Вышел из группы <b>{update.message.chat.title}</b>.',
             parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         logger.info('Leave chat "%s"', update.message.chat.title)
-        group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+        group_chat = await get_chat(bot, GROUP_CHAT_KEY)
         if group_chat is not None and update.message.chat.id == group_chat.id:
-            await set_chat(bot.storage, GROUP_CHAT_KEY)
+            await set_chat(bot, GROUP_CHAT_KEY)
             logger.info('Forget chat "%s"', update.message.chat.title)
 
 
@@ -318,14 +317,13 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Message from "%s"', update.message.from_.to_dict())
-    await set_chat(bot.storage, chat_key(update.message.chat.id),
-                   update.message.chat)
+    await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
     stopped = await Stopped.get(bot, update.message.chat.id)
     if stopped is not None:
         await Stopped.delete(bot, update.message.chat.id)
         await bot.send_message(update.message.chat.id, 'С возвращением!')
 
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
         forward_chat_id = group_chat.id
     else:
@@ -352,7 +350,7 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info('Reply messgae in group from "%s"',
                 update.message.from_.to_dict())
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
         await bot.leave_chat(update.message.chat.id)
         return
@@ -368,14 +366,14 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
     await send_user_message(bot, update.message)
 
     await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
-    await set_chat(bot.storage, CURRENT_CHAT_KEY)
+    await set_chat(bot, CURRENT_CHAT_KEY)
 
 
 @handlers.message(filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     logger.info('Message from admin "%s"', update.message.to_dict())
-    group_chat = await get_chat(bot.storage, GROUP_CHAT_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
         await bot.send_message(
             update.message.chat.id,
@@ -391,7 +389,7 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
     await send_user_message(bot, update.message)
 
     await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
-    await set_chat(bot.storage, CURRENT_CHAT_KEY)
+    await set_chat(bot, CURRENT_CHAT_KEY)
 
 
 @handlers.callback_query(data_match=REPLY_RXP)
@@ -406,7 +404,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     data_match = REPLY_RXP.match(update.callback_query.data)
     assert data_match is not None, 'Reply to data not match format'
     current_chat_id = int(data_match.group(CHAT_ID_GROUP))
-    current_chat = await get_chat(bot.storage, chat_key(current_chat_id))
+    current_chat = await get_chat(bot, chat_key(current_chat_id))
     if current_chat is None:
         await bot.edit_message_text(
             'Ошибка. Сообщение не отправить.',
@@ -426,7 +424,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
         return
     await bot.storage.set(WAIT_REPLY_FROM_ID_KEY,
                           update.callback_query.from_.id)
-    await set_chat(bot.storage, CURRENT_CHAT_KEY, current_chat)
+    await set_chat(bot, CURRENT_CHAT_KEY, current_chat)
     await bot.edit_message_text(
         f'Введите сообщение для {user_link(current_chat)}.',
         chat_id=update.callback_query.message.chat.id,
