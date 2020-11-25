@@ -191,8 +191,7 @@ class FromAdminFilter:
 
 
 class AlbumForwarder:
-
-    __slots__ = ('_queues', '_scheduler', '_bot')
+    __slots__ = '_queues', '_scheduler', '_bot'
 
     def __init__(self, bot: Bot) -> None:
         self._queues: Final[Dict[str, asyncio.Queue]] = {}
