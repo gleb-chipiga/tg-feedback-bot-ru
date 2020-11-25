@@ -35,6 +35,10 @@ def path(_str: str) -> Path:
     return Path(_str)
 
 
+def debug() -> bool:
+    return __debug__
+
+
 def user_name(user_chat: Union[User, Chat]) -> str:
     if user_chat.first_name is None:
         raise RuntimeError('First name of private chat must be not empty')

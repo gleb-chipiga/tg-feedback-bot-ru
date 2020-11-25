@@ -12,9 +12,9 @@ from aiotgbot.storage_sqlite import SQLiteStorage
 from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
                       REPLY_PREFIX, AlbumForwarder, FromAdminFilter,
                       FromUserFilter, Stopped, add_chat_to_list, chat_key,
-                      get_chat, get_software, path, remove_chat_from_list,
-                      reply_menu, send_from_message, send_user_message,
-                      set_chat, user_link)
+                      debug, get_chat, get_software, path,
+                      remove_chat_from_list, reply_menu, send_from_message,
+                      send_user_message, set_chat, user_link)
 
 logger = logging.getLogger('feedback_bot')
 
@@ -480,8 +480,6 @@ def main():
     parser.add_argument('-l', dest='chat_list_size', type=int,
                         default=os.environ.get('CHAT_LIST_SIZE', 10),
                         help='size of chat list')
-    parser.add_argument('-d', dest='debug', action='store_true',
-                        help='enable debug mode')
     args = parser.parse_args()
 
     if args.admin_username == '':
@@ -490,14 +488,12 @@ def main():
     if args.token == '':
         parser.error('token is empty')
 
-    debug = args.debug or os.environ.get('DEBUG', '0') == '1'
-
     if not (args.storage_path.is_file() or args.storage_path.parent.is_dir()):
         parser.error(f'config file "{args.storage_path}" does not exist '
                      f'and parent path is not dir')
 
     log_format = '%(asctime)s %(name)s %(levelname)s: %(message)s'
-    if debug:
+    if debug():
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         logging.getLogger('asyncio').setLevel(logging.ERROR)
         logging.getLogger('aiosqlite').setLevel(logging.INFO)
@@ -519,9 +515,7 @@ def main():
         else:
             asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
-    asyncio.run(feedback_bot.poll(on_startup=on_startup,
-                                  on_shutdown=on_shutdown),
-                debug=debug)
+    asyncio.run(feedback_bot.poll(on_startup, on_shutdown), debug=debug())
 
 
 if __name__ == '__main__':  # pragma: nocover
