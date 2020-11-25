@@ -451,9 +451,16 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set(GROUP_CHAT_KEY)
 
     async for key, value in bot.storage.iterate('chat-'):
-        assert isinstance(value, dict)
-        await bot.storage.set(f'chat|{value["id"]}', value)
-        await bot.storage.delete(key)
+        if isinstance(value, dict):
+            await bot.storage.set(f'chat|{value["id"]}', value)
+            await bot.storage.delete(key)
+        elif isinstance(value, list) and all(isinstance(item, list) and
+                                             len(item) == 2 for item in value):
+            dict_value = dict(value)
+            await bot.storage.set(f'chat|{dict_value["id"]}', dict_value)
+            await bot.storage.delete(key)
+        else:
+            logger.warning('Unknown item format %s', value)
 
     album_forwarder = AlbumForwarder(bot)
     await album_forwarder.start()
