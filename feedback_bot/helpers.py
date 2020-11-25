@@ -9,9 +9,8 @@ from typing import Dict, Final, List, Optional, Union
 import aiojobs
 import attr
 from aiojobs_protocols import SchedulerProtocol
-from aiotgbot import (BaseFilter, Bot, BotBlocked, BotUpdate, Chat,
-                      InlineKeyboardButton, InlineKeyboardMarkup, Message,
-                      ParseMode)
+from aiotgbot import (Bot, BotBlocked, BotUpdate, Chat, InlineKeyboardButton,
+                      InlineKeyboardMarkup, Message, ParseMode)
 from aiotgbot.api_types import (InputMediaAudio, InputMediaDocument,
                                 InputMediaPhoto, InputMediaVideo, User)
 from more_itertools import chunked
@@ -62,8 +61,12 @@ async def set_chat(bot: Bot, key: str, chat: Optional[Chat] = None) -> None:
 
 async def get_chat(bot: Bot, key: str) -> Optional[Chat]:
     data = await bot.storage.get(key)
-    assert isinstance(data, dict)
-    return Chat.from_dict(data) if data is not None else None
+    if isinstance(data, dict):
+        return Chat.from_dict(data)
+    elif data is None:
+        return None
+    else:
+        raise RuntimeError('Chat data is not dict or None')
 
 
 async def get_chat_list(bot: Bot) -> List[Chat]:
@@ -163,10 +166,10 @@ async def send_user_message(bot: Bot, message: Message) -> None:
             parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-@attr.s(slots=True)
-class FromUserFilter(BaseFilter):
+@attr.s(slots=True, frozen=True, auto_attribs=True)
+class FromUserFilter:
 
-    async def check(self, bot: Bot, update: BotUpdate) -> bool:
+    async def check(self, bot: Bot, update: BotUpdate) -> bool:  # noqa
         if ADMIN_USERNAME_KEY not in bot:
             raise RuntimeError('Admin username not set')
 
@@ -175,10 +178,10 @@ class FromUserFilter(BaseFilter):
                 update.message.from_.username != bot[ADMIN_USERNAME_KEY])
 
 
-@attr.s(slots=True)
-class FromAdminFilter(BaseFilter):
+@attr.s(slots=True, frozen=True, auto_attribs=True)
+class FromAdminFilter:
 
-    async def check(self, bot: Bot, update: BotUpdate) -> bool:
+    async def check(self, bot: Bot, update: BotUpdate) -> bool:  # noqa
         if ADMIN_USERNAME_KEY not in bot:
             raise RuntimeError('Admin username not set')
 
