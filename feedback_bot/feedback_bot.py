@@ -10,10 +10,11 @@ from aiotgbot.api_types import BotCommand
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
-                      AlbumForwarder, FromAdminFilter, FromUserFilter, Stopped,
-                      add_chat_to_list, chat_key, get_chat, get_software, path,
-                      remove_chat_from_list, reply_menu, send_from_message,
-                      send_user_message, set_chat, user_link)
+                      REPLY_PREFIX, AlbumForwarder, FromAdminFilter,
+                      FromUserFilter, Stopped, add_chat_to_list, chat_key,
+                      get_chat, get_software, path, remove_chat_from_list,
+                      reply_menu, send_from_message, send_user_message,
+                      set_chat, user_link)
 
 logger = logging.getLogger('feedback_bot')
 
@@ -23,7 +24,9 @@ COMMANDS: Final[Tuple[BotCommand, ...]] = (
     BotCommand('help', 'Помощь'),
     BotCommand('stop', 'Остановить')
 )
-REPLY_RXP: Final[re.Pattern] = re.compile(r'^reply-to-(?P<chat_id>\d+)$')
+CHAT_ID_GROUP: Final[str] = 'chat_id'
+REPLY_RXP: Final[re.Pattern] = re.compile(
+    rf'^{REPLY_PREFIX}(?P<{CHAT_ID_GROUP}>\d+)$')
 ALBUM_FORWARDER_KEY: Final[str] = 'album_forwarder'
 GROUP_CHAT_KEY: Final[str] = 'group_chat'
 ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
@@ -402,7 +405,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
 
     data_match = REPLY_RXP.match(update.callback_query.data)
     assert data_match is not None, 'Reply to data not match format'
-    current_chat_id = int(data_match.group('chat_id'))
+    current_chat_id = int(data_match.group(CHAT_ID_GROUP))
     current_chat = await get_chat(bot.storage, chat_key(current_chat_id))
     if current_chat is None:
         await bot.edit_message_text(
