@@ -16,8 +16,6 @@ from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
                       remove_chat_from_list, reply_menu, send_from_message,
                       send_user_message, set_chat, user_link)
 
-logger = logging.getLogger('feedback_bot')
-
 SOFTWARE: Final[str] = get_software()
 COMMANDS: Final[Tuple[BotCommand, ...]] = (
     BotCommand('start', 'Начать работу'),
@@ -33,7 +31,7 @@ ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
 CURRENT_CHAT_KEY: Final[str] = 'current_chat'
 WAIT_REPLY_FROM_ID_KEY: Final[str] = 'wait_reply_from_id'
 
-
+logger = logging.getLogger('feedback_bot')
 handlers = HandlerTable()
 
 
