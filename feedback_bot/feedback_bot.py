@@ -43,7 +43,10 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info('Start command from "%s"', update.message.from_.to_dict())
-    await Stopped.delete(bot, update.message.from_.id)
+    stopped = await Stopped.get(bot, update.message.chat.id)
+    if stopped is not None:
+        await Stopped.delete(bot, update.message.chat.id)
+        await bot.send_message(update.message.chat.id, 'С возвращением!')
     await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос. '
