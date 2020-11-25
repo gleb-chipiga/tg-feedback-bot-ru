@@ -24,7 +24,7 @@ COMMANDS: Final[Tuple[BotCommand, ...]] = (
 )
 CHAT_ID_GROUP: Final[str] = 'chat_id'
 REPLY_RXP: Final[re.Pattern] = re.compile(
-    rf'^{REPLY_PREFIX}(?P<{CHAT_ID_GROUP}>\d+)$')
+    rf'^{REPLY_PREFIX}\|(?P<{CHAT_ID_GROUP}>-?\d+)$')
 ALBUM_FORWARDER_KEY: Final[str] = 'album_forwarder'
 GROUP_CHAT_KEY: Final[str] = 'group_chat'
 ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
@@ -449,6 +449,11 @@ async def on_startup(bot: Bot) -> None:
         await bot.storage.set(ADMIN_CHAT_ID_KEY)
     if await bot.storage.get(GROUP_CHAT_KEY) is None:
         await bot.storage.set(GROUP_CHAT_KEY)
+
+    async for key, value in bot.storage.iterate('chat-'):
+        assert isinstance(value, dict)
+        await bot.storage.set(f'chat|{value["id"]}', value)
+        await bot.storage.delete(key)
 
     album_forwarder = AlbumForwarder(bot)
     await album_forwarder.start()

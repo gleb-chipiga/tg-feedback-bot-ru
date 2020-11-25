@@ -19,7 +19,7 @@ ALBUM_WAIT_TIMEOUT = 1  # seconds
 CHAT_LIST_KEY: Final[str] = 'chat_list'
 CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
 ADMIN_USERNAME_KEY: Final[str] = 'admin_username'
-REPLY_PREFIX: Final[str] = 'reply-to-'
+REPLY_PREFIX: Final[str] = 'reply'
 
 logger = logging.getLogger('feedback_bot')
 
@@ -52,7 +52,7 @@ def user_link(user_chat: Union[User, Chat]) -> str:
 
 
 def chat_key(chat_id: int) -> str:
-    return f'chat-{chat_id}'
+    return f'chat|{chat_id}'
 
 
 async def set_chat(bot: Bot, key: str, chat: Optional[Chat] = None) -> None:
@@ -114,7 +114,7 @@ async def reply_menu(bot: Bot, chat_id: Union[int, str]) -> None:
             chat_id, 'Выберите пользователя для ответа.',
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(
-                    user_name(chat), callback_data=f'{REPLY_PREFIX}{chat.id}'
+                    user_name(chat), callback_data=f'{REPLY_PREFIX}|{chat.id}'
                 ) for chat in chunk] for chunk in chunked(chat_list, 2)]
             )
         )
@@ -309,7 +309,7 @@ class Stopped:
 
     @staticmethod
     def _key(chat_id: int) -> str:
-        return f'stopped-{chat_id}'
+        return f'stopped|{chat_id}'
 
     async def set(self, bot: Bot, chat_id: int):
         await bot.storage.set(
