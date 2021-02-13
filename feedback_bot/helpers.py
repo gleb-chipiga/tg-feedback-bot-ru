@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from operator import attrgetter
 from pathlib import Path
-from typing import Dict, Final, List, Optional, Union
+from typing import Any, Dict, Final, List, Optional, Union
 
 import aiojobs
 import attr
@@ -194,7 +194,7 @@ class AlbumForwarder:
     __slots__ = '_queues', '_scheduler', '_bot'
 
     def __init__(self, bot: Bot) -> None:
-        self._queues: Final[Dict[str, asyncio.Queue]] = {}
+        self._queues: 'Final[Dict[str, asyncio.Queue[Message]]]' = {}
         self._scheduler: Optional[SchedulerProtocol] = None
         self._bot: Final[Bot] = bot
 
@@ -274,7 +274,7 @@ class AlbumForwarder:
         elif from_chat is not None:
             await self._bot.send_message(
                 from_chat.id, 'Не удалось переслать элементов '
-                              f'непоодерживаемого типа: {message_count}')
+                              f'неподдерживаемого типа: {message_count}')
             logger.debug('Failed to forward %d media group items of '
                          'unsupported type', message_count)
         else:
@@ -293,7 +293,8 @@ class AlbumForwarder:
         assert len(self._queues) == 0
 
     @staticmethod
-    def _scheduler_exception_handler(_, context):
+    def _scheduler_exception_handler(_: SchedulerProtocol,
+                                     context: Dict[str, Any]) -> None:
         logger.exception('Album forward error', exc_info=context['exception'])
 
 
@@ -310,10 +311,11 @@ class Stopped:
     def _key(chat_id: int) -> str:
         return f'stopped|{chat_id}'
 
-    async def set(self, bot: Bot, chat_id: int):
+    async def set(self, bot: Bot, chat_id: int) -> None:
         await bot.storage.set(
             self._key(chat_id),
-            {'dt': self.dt.isoformat(), 'error': self.blocked})
+            {'dt': self.dt.isoformat(), 'error': self.blocked}
+        )
 
     @staticmethod
     async def get(bot: Bot, chat_id: int) -> Optional['Stopped']:

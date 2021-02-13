@@ -1,12 +1,14 @@
-import asyncio
 import logging
 import re
-from typing import TYPE_CHECKING, Final, Tuple
+from argparse import Namespace
+from typing import AsyncIterator, Final, Tuple
 
 from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
                       HandlerTable, ParseMode, PrivateChatFilter,
                       TelegramError)
 from aiotgbot.api_types import BotCommand
+from aiotgbot.bot import PollBot
+from aiotgbot import Runner
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
@@ -23,13 +25,15 @@ COMMANDS: Final[Tuple[BotCommand, ...]] = (
     BotCommand('stop', 'Остановить')
 )
 CHAT_ID_GROUP: Final[str] = 'chat_id'
-REPLY_RXP: Final[re.Pattern] = re.compile(
+REPLY_RXP: 'Final[re.Pattern[str]]' = re.compile(
     rf'^{REPLY_PREFIX}\|(?P<{CHAT_ID_GROUP}>-?\d+)$')
 ALBUM_FORWARDER_KEY: Final[str] = 'album_forwarder'
 GROUP_CHAT_KEY: Final[str] = 'group_chat'
 ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
 CURRENT_CHAT_KEY: Final[str] = 'current_chat'
 WAIT_REPLY_FROM_ID_KEY: Final[str] = 'wait_reply_from_id'
+STORAGE_PATH_KEY: Final[str] = 'storage_path'
+TOKEN_KEY: Final[str] = 'token'
 
 logger = logging.getLogger('feedback_bot')
 handlers = HandlerTable()
@@ -298,7 +302,7 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
 
 
 @handlers.message(content_types=[ContentType.LEFT_CHAT_MEMBER])
-async def group_left_member(bot: Bot, update: BotUpdate):
+async def group_left_member(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.left_chat_member is not None
     logger.info('Left group member message "%s"', update.message.to_dict())
@@ -440,44 +444,53 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
         parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-async def on_startup(bot: Bot) -> None:
-    if await bot.storage.get(CHAT_LIST_KEY) is None:
-        await bot.storage.set(CHAT_LIST_KEY, [])
-    if await bot.storage.get(CURRENT_CHAT_KEY) is None:
-        await bot.storage.set(CURRENT_CHAT_KEY)
-    if await bot.storage.get(ADMIN_CHAT_ID_KEY) is None:
-        await bot.storage.set(ADMIN_CHAT_ID_KEY)
-    if await bot.storage.get(GROUP_CHAT_KEY) is None:
-        await bot.storage.set(GROUP_CHAT_KEY)
+async def run_context(runner: Runner) -> AsyncIterator[None]:
+    storage = SQLiteStorage(runner[STORAGE_PATH_KEY])
+    await storage.connect()
+    if await storage.get(CHAT_LIST_KEY) is None:
+        await storage.set(CHAT_LIST_KEY, [])
+    if await storage.get(CURRENT_CHAT_KEY) is None:
+        await storage.set(CURRENT_CHAT_KEY)
+    if await storage.get(ADMIN_CHAT_ID_KEY) is None:
+        await storage.set(ADMIN_CHAT_ID_KEY)
+    if await storage.get(GROUP_CHAT_KEY) is None:
+        await storage.set(GROUP_CHAT_KEY)
 
-    async for key, value in bot.storage.iterate('chat-'):
-        if isinstance(value, dict):
-            await bot.storage.set(f'chat|{value["id"]}', value)
-            await bot.storage.delete(key)
-        elif isinstance(value, list) and all(isinstance(item, list) and
-                                             len(item) == 2 for item in value):
-            dict_value = dict(value)
-            await bot.storage.set(f'chat|{dict_value["id"]}', dict_value)
-            await bot.storage.delete(key)
-        else:
-            logger.warning('Unknown item format %s', value)
+    handlers.freeze()
+    bot = PollBot(runner[TOKEN_KEY], handlers, storage)
+    bot[ADMIN_USERNAME_KEY] = runner[ADMIN_USERNAME_KEY]
+    bot[CHAT_LIST_SIZE_KEY] = runner[CHAT_LIST_SIZE_KEY]
+    await bot.start()
 
-    album_forwarder = AlbumForwarder(bot)
-    await album_forwarder.start()
-    bot[ALBUM_FORWARDER_KEY] = album_forwarder
+    bot[ALBUM_FORWARDER_KEY] = AlbumForwarder(bot)
+    await bot[ALBUM_FORWARDER_KEY].start()
 
     if COMMANDS != await bot.get_my_commands():
         logger.info('Update bot commands')
         await bot.set_my_commands(COMMANDS)
 
+    yield
 
-async def on_shutdown(bot: Bot) -> None:
-    album_forwarder = bot.get(ALBUM_FORWARDER_KEY)
-    assert isinstance(album_forwarder, AlbumForwarder)
-    await album_forwarder.stop()
+    await bot[ALBUM_FORWARDER_KEY].stop()
+    await bot.stop()
+    await storage.close()
 
 
-def main():
+def setup_logging() -> None:
+    import os
+
+    log_format = '%(asctime)s %(name)s %(levelname)s: %(message)s'
+    if debug():
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
+        logging.getLogger('asyncio').setLevel(logging.ERROR)
+        logging.getLogger('aiosqlite').setLevel(logging.INFO)
+    else:
+        logging.basicConfig(level=logging.INFO, format=log_format)
+    logger.info('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
+    logger.info(SOFTWARE)
+
+
+def parse_args() -> Namespace:
     import argparse
     import os
 
@@ -494,41 +507,28 @@ def main():
                         default=os.environ.get('CHAT_LIST_SIZE', 10),
                         help='size of chat list')
     args = parser.parse_args()
-
     if args.admin_username == '':
         parser.error('admin username is empty')
-
     if args.token == '':
         parser.error('token is empty')
-
     if not (args.storage_path.is_file() or args.storage_path.parent.is_dir()):
         parser.error(f'config file "{args.storage_path}" does not exist '
                      f'and parent path is not dir')
+    return args
 
-    log_format = '%(asctime)s %(name)s %(levelname)s: %(message)s'
-    if debug():
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
-        logging.getLogger('asyncio').setLevel(logging.ERROR)
-        logging.getLogger('aiosqlite').setLevel(logging.INFO)
-    else:
-        logging.basicConfig(level=logging.INFO, format=log_format)
-    logger.info('PYTHONOPTIMIZE=%s', os.environ.get('PYTHONOPTIMIZE'))
-    logger.info(SOFTWARE)
 
-    storage = SQLiteStorage(args.storage_path)
-    feedback_bot = Bot(args.token, handlers, storage)
-    feedback_bot[ADMIN_USERNAME_KEY] = args.admin_username
-    feedback_bot[CHAT_LIST_SIZE_KEY] = args.chat_list_size
+def main() -> None:
+    import uvloop
 
-    if not TYPE_CHECKING:
-        try:
-            import uvloop  # noqa
-        except ImportError:
-            pass
-        else:
-            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
-    asyncio.run(feedback_bot.poll(on_startup, on_shutdown), debug=debug())
+    uvloop.install()
+    setup_logging()
+    args = parse_args()
+    runner = Runner(run_context, debug=debug())
+    runner[TOKEN_KEY] = args.token
+    runner[STORAGE_PATH_KEY] = args.storage_path
+    runner[ADMIN_USERNAME_KEY] = args.admin_username
+    runner[CHAT_LIST_SIZE_KEY] = args.chat_list_size
+    runner.run()
 
 
 if __name__ == '__main__':  # pragma: nocover
