@@ -25,9 +25,12 @@ logger = logging.getLogger('feedback_bot')
 
 
 def get_software() -> str:
-    import aiotgbot.helpers  # isort:skip
-    from . import __version__
-    return f'{aiotgbot.helpers.get_software()} feedback-bot/{__version__}'
+    from aiotgbot.helpers import get_python_version  # isort:skip
+    from aiotgbot import __version__ as aiotgbot_version  # isort:skip
+    from . import __version__  # isort:skip
+    return (f'Python/{get_python_version()} '
+            f'aiotgbot/{aiotgbot_version} '
+            f'feedback-bot/{__version__}')
 
 
 def path(_str: str) -> Path:
