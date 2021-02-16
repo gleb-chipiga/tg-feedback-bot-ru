@@ -1,18 +1,17 @@
+import asyncio
 import logging
 import re
-from argparse import Namespace
 from typing import AsyncIterator, Final, Tuple
 
 from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
-                      HandlerTable, ParseMode, PrivateChatFilter,
+                      HandlerTable, ParseMode, PrivateChatFilter, Runner,
                       TelegramError)
 from aiotgbot.api_types import BotCommand
 from aiotgbot.bot import PollBot
-from aiotgbot import Runner
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
-                      REPLY_PREFIX, AlbumForwarder, FromAdminFilter,
+                      REPLY_PREFIX, AlbumForwarder, Config, FromAdminFilter,
                       FromUserFilter, Stopped, add_chat_to_list, chat_key,
                       debug, get_chat, get_software, path,
                       remove_chat_from_list, reply_menu, send_from_message,
@@ -33,7 +32,8 @@ ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
 CURRENT_CHAT_KEY: Final[str] = 'current_chat'
 WAIT_REPLY_FROM_ID_KEY: Final[str] = 'wait_reply_from_id'
 STORAGE_PATH_KEY: Final[str] = 'storage_path'
-TOKEN_KEY: Final[str] = 'token'
+TG_TOKEN_KEY: Final[str] = 'token'
+TZ_KEY: Final['str'] = 'TZ'
 
 logger = logging.getLogger('feedback_bot')
 handlers = HandlerTable()
@@ -445,6 +445,9 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
 
 
 async def run_context(runner: Runner) -> AsyncIterator[None]:
+    if debug():
+        asyncio.get_running_loop().slow_callback_duration = 0.01
+
     storage = SQLiteStorage(runner[STORAGE_PATH_KEY])
     await storage.connect()
     if await storage.get(CHAT_LIST_KEY) is None:
@@ -457,7 +460,7 @@ async def run_context(runner: Runner) -> AsyncIterator[None]:
         await storage.set(GROUP_CHAT_KEY)
 
     handlers.freeze()
-    bot = PollBot(runner[TOKEN_KEY], handlers, storage)
+    bot = PollBot(runner[TG_TOKEN_KEY], handlers, storage)
     bot[ADMIN_USERNAME_KEY] = runner[ADMIN_USERNAME_KEY]
     bot[CHAT_LIST_SIZE_KEY] = runner[CHAT_LIST_SIZE_KEY]
     await bot.start()
@@ -490,44 +493,31 @@ def setup_logging() -> None:
     logger.info(SOFTWARE)
 
 
-def parse_args() -> Namespace:
-    import argparse
-    import os
+def main() -> None:
+    import argparse  # isort:skip
+    import os  # isort:skip
+    import uvloop
 
     parser = argparse.ArgumentParser(description='Feedback aiotgbot bot.')
-    parser.add_argument('storage_path', type=path,
-                        help='aiotgbot bot API token')
-    parser.add_argument('-a', dest='admin_username',
-                        default=os.environ.get('ADMIN_USERNAME', ''),
-                        type=str, help='admin username')
-    parser.add_argument('-t', dest='token',
-                        default=os.environ.get('TG_BOT_TOKEN', ''),
-                        type=str, help='aiotgbot bot API token')
-    parser.add_argument('-l', dest='chat_list_size', type=int,
-                        default=os.environ.get('CHAT_LIST_SIZE', 10),
-                        help='size of chat list')
+    parser.add_argument('config_path', type=path, help='config path')
+    parser.add_argument('storage_path', type=path, help='storage path')
     args = parser.parse_args()
-    if args.admin_username == '':
-        parser.error('admin username is empty')
-    if args.token == '':
-        parser.error('token is empty')
+    if not args.config_path.exists():
+        parser.error(f'config file "{args.config_path}" does not exist')
     if not (args.storage_path.is_file() or args.storage_path.parent.is_dir()):
         parser.error(f'config file "{args.storage_path}" does not exist '
                      f'and parent path is not dir')
-    return args
+    if TZ_KEY not in os.environ:
+        parser.error('Env var TZ is not set')
+    config = Config.load(args.config_path)
 
-
-def main() -> None:
-    import uvloop
-
-    uvloop.install()
     setup_logging()
-    args = parse_args()
+    uvloop.install()
     runner = Runner(run_context, debug=debug())
-    runner[TOKEN_KEY] = args.token
+    runner[TG_TOKEN_KEY] = config.tg_token
+    runner[ADMIN_USERNAME_KEY] = config.admin_username
+    runner[CHAT_LIST_SIZE_KEY] = config.chat_list_size
     runner[STORAGE_PATH_KEY] = args.storage_path
-    runner[ADMIN_USERNAME_KEY] = args.admin_username
-    runner[CHAT_LIST_SIZE_KEY] = args.chat_list_size
     runner.run()
 
 

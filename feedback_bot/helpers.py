@@ -8,6 +8,7 @@ from typing import Any, Dict, Final, List, Optional, Union
 
 import aiojobs
 import attr
+import yaml
 from aiojobs_protocols import SchedulerProtocol
 from aiotgbot import (Bot, BotBlocked, BotUpdate, Chat, InlineKeyboardButton,
                       InlineKeyboardMarkup, Message, ParseMode)
@@ -332,3 +333,16 @@ class Stopped:
     @staticmethod
     async def delete(bot: Bot, chat_id: int) -> None:
         await bot.storage.delete(Stopped._key(chat_id))
+
+
+@attr.s(auto_attribs=True, frozen=True)
+class Config:
+    admin_username: str
+    tg_token: str
+    chat_list_size: str
+
+    @staticmethod
+    def load(config_path: Path) -> 'Config':
+        with config_path.open('r') as file:
+            data = yaml.load(file, yaml.CSafeLoader)
+            return Config(**data)
