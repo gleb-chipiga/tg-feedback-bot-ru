@@ -2,5 +2,5 @@
 .idea
 .mypy_cache
 dist
-storage
+volume
 *.sqlite
