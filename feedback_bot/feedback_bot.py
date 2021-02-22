@@ -498,7 +498,7 @@ def main() -> None:
     import os  # isort:skip
     import uvloop
 
-    parser = argparse.ArgumentParser(description='Feedback aiotgbot bot.')
+    parser = argparse.ArgumentParser(description='Feedback aiotgbot bot')
     parser.add_argument('config_path', type=path, help='config path')
     parser.add_argument('storage_path', type=path, help='storage path')
     args = parser.parse_args()
