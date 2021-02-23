@@ -35,7 +35,7 @@ STORAGE_PATH_KEY: Final[str] = 'storage_path'
 TG_TOKEN_KEY: Final[str] = 'token'
 TZ_KEY: Final['str'] = 'TZ'
 
-logger = logging.getLogger('feedback_bot')
+logger = logging.getLogger('feedback-bot')
 handlers = HandlerTable()
 
 

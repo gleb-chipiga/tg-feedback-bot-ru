@@ -22,7 +22,7 @@ CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
 ADMIN_USERNAME_KEY: Final[str] = 'admin_username'
 REPLY_PREFIX: Final[str] = 'reply'
 
-logger = logging.getLogger('feedback_bot')
+logger = logging.getLogger('feedback-bot')
 
 
 def get_software() -> str:
