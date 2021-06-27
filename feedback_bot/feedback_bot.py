@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import re
-from typing import AsyncIterator, Final, Tuple
+from pathlib import Path
+from typing import AsyncIterator, Final
 
 from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
                       HandlerTable, ParseMode, PrivateChatFilter, Runner,
@@ -10,15 +11,15 @@ from aiotgbot.api_types import BotCommand
 from aiotgbot.bot import PollBot
 from aiotgbot.storage_sqlite import SQLiteStorage
 
-from .helpers import (ADMIN_USERNAME_KEY, CHAT_LIST_KEY, CHAT_LIST_SIZE_KEY,
-                      REPLY_PREFIX, AlbumForwarder, Config, FromAdminFilter,
-                      FromUserFilter, Stopped, add_chat_to_list, chat_key,
-                      debug, get_chat, get_software, path,
-                      remove_chat_from_list, reply_menu, send_from_message,
-                      send_user_message, set_chat, user_link)
+from .helpers import (CHAT_LIST_KEY, CONFIG_KEY, REPLY_PREFIX, AlbumForwarder,
+                      Config, FromAdminFilter, FromUserFilter, Stopped,
+                      add_chat_to_list, chat_key, debug, get_chat,
+                      get_software, path, remove_chat_from_list, reply_menu,
+                      send_from_message, send_user_message, set_chat,
+                      user_link)
 
 SOFTWARE: Final[str] = get_software()
-COMMANDS: Final[Tuple[BotCommand, ...]] = (
+COMMANDS: Final[tuple[BotCommand, ...]] = (
     BotCommand('start', 'Начать работу'),
     BotCommand('help', 'Помощь'),
     BotCommand('stop', 'Остановить')
@@ -31,9 +32,8 @@ GROUP_CHAT_KEY: Final[str] = 'group_chat'
 ADMIN_CHAT_ID_KEY: Final[str] = 'admin_chat_id'
 CURRENT_CHAT_KEY: Final[str] = 'current_chat'
 WAIT_REPLY_FROM_ID_KEY: Final[str] = 'wait_reply_from_id'
-STORAGE_PATH_KEY: Final[str] = 'storage_path'
-TG_TOKEN_KEY: Final[str] = 'token'
 TZ_KEY: Final['str'] = 'TZ'
+
 
 logger = logging.getLogger('feedback-bot')
 handlers = HandlerTable()
@@ -444,11 +444,13 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
         parse_mode=ParseMode.HTML, disable_web_page_preview=True)
 
 
-async def run_context(runner: Runner) -> AsyncIterator[None]:
+async def run_context(
+    _: Runner, storage_path: Path, config: Config
+) -> AsyncIterator[None]:
     if debug():
         asyncio.get_running_loop().slow_callback_duration = 0.01
 
-    storage = SQLiteStorage(runner[STORAGE_PATH_KEY])
+    storage = SQLiteStorage(storage_path)
     await storage.connect()
     if await storage.get(CHAT_LIST_KEY) is None:
         await storage.set(CHAT_LIST_KEY, [])
@@ -460,9 +462,8 @@ async def run_context(runner: Runner) -> AsyncIterator[None]:
         await storage.set(GROUP_CHAT_KEY)
 
     handlers.freeze()
-    bot = PollBot(runner[TG_TOKEN_KEY], handlers, storage)
-    bot[ADMIN_USERNAME_KEY] = runner[ADMIN_USERNAME_KEY]
-    bot[CHAT_LIST_SIZE_KEY] = runner[CHAT_LIST_SIZE_KEY]
+    bot = PollBot(config.tg_token, handlers, storage)
+    bot[CONFIG_KEY] = config
     await bot.start()
 
     bot[ALBUM_FORWARDER_KEY] = AlbumForwarder(bot)
@@ -513,11 +514,8 @@ def main() -> None:
 
     setup_logging()
     uvloop.install()
-    runner = Runner(run_context, debug=debug())
-    runner[TG_TOKEN_KEY] = config.tg_token
-    runner[ADMIN_USERNAME_KEY] = config.admin_username
-    runner[CHAT_LIST_SIZE_KEY] = config.chat_list_size
-    runner[STORAGE_PATH_KEY] = args.storage_path
+    runner = Runner(run_context, debug=debug(), storage_path=args.storage_path,
+                    config=config)
     runner.run()
 
 

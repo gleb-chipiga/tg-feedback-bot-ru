@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from operator import attrgetter
 from pathlib import Path
-from typing import Any, Dict, Final, List, Optional, Union
+from typing import Any, Final, Optional, Union
 
 import aiojobs
 import attr
@@ -18,9 +18,8 @@ from more_itertools import chunked
 
 ALBUM_WAIT_TIMEOUT = 1  # seconds
 CHAT_LIST_KEY: Final[str] = 'chat_list'
-CHAT_LIST_SIZE_KEY: Final[str] = 'chat_list_size'
-ADMIN_USERNAME_KEY: Final[str] = 'admin_username'
 REPLY_PREFIX: Final[str] = 'reply'
+CONFIG_KEY: Final['str'] = 'config'
 
 logger = logging.getLogger('feedback-bot')
 
@@ -73,7 +72,7 @@ async def get_chat(bot: Bot, key: str) -> Optional[Chat]:
         raise RuntimeError('Chat data is not dict or None')
 
 
-async def get_chat_list(bot: Bot) -> List[Chat]:
+async def get_chat_list(bot: Bot) -> list[Chat]:
     chat_list = await bot.storage.get(CHAT_LIST_KEY)
     if chat_list is None:
         raise RuntimeError('Chat list not in storage')
@@ -82,7 +81,7 @@ async def get_chat_list(bot: Bot) -> List[Chat]:
     return [Chat.from_dict(item) for item in chat_list]
 
 
-async def set_chat_list(bot: Bot, chat_list: List[Chat]) -> None:
+async def set_chat_list(bot: Bot, chat_list: list[Chat]) -> None:
     await bot.storage.set(
         CHAT_LIST_KEY,
         [chat.to_dict() for chat in chat_list]
@@ -90,10 +89,12 @@ async def set_chat_list(bot: Bot, chat_list: List[Chat]) -> None:
 
 
 async def add_chat_to_list(bot: Bot, chat: Chat) -> None:
+    config = bot[CONFIG_KEY]
+    assert isinstance(config, Config)
     chat_list = await get_chat_list(bot)
     if all(item.id != chat.id for item in chat_list):
         chat_list.append(chat)
-        if len(chat_list) > bot[CHAT_LIST_SIZE_KEY]:
+        if len(chat_list) > bot[config.chat_list_size]:
             chat_list.pop(0)
         await set_chat_list(bot, chat_list)
 
@@ -174,31 +175,31 @@ async def send_user_message(bot: Bot, message: Message) -> None:
 class FromUserFilter:
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:  # noqa
-        if ADMIN_USERNAME_KEY not in bot:
-            raise RuntimeError('Admin username not set')
+        config = bot[CONFIG_KEY]
+        assert isinstance(config, Config)
 
         return (update.message is not None and
                 update.message.from_ is not None and
-                update.message.from_.username != bot[ADMIN_USERNAME_KEY])
+                update.message.from_.username != config.admin_username)
 
 
 @attr.s(slots=True, frozen=True, auto_attribs=True)
 class FromAdminFilter:
 
     async def check(self, bot: Bot, update: BotUpdate) -> bool:  # noqa
-        if ADMIN_USERNAME_KEY not in bot:
-            raise RuntimeError('Admin username not set')
+        config = bot[CONFIG_KEY]
+        assert isinstance(config, Config)
 
         return (update.message is not None and
                 update.message.from_ is not None and
-                update.message.from_.username == bot[ADMIN_USERNAME_KEY])
+                update.message.from_.username == config.admin_username)
 
 
 class AlbumForwarder:
     __slots__ = '_queues', '_scheduler', '_bot'
 
     def __init__(self, bot: Bot) -> None:
-        self._queues: 'Final[Dict[str, asyncio.Queue[Message]]]' = {}
+        self._queues: 'Final[dict[str, asyncio.Queue[Message]]]' = {}
         self._scheduler: Optional[SchedulerProtocol] = None
         self._bot: Final[Bot] = bot
 
@@ -222,7 +223,7 @@ class AlbumForwarder:
     async def _send(self, media_group_id: str, chat_id: int,
                     add_from_info: bool = False) -> None:
         assert media_group_id in self._queues
-        media: List[Union[InputMediaAudio, InputMediaPhoto, InputMediaVideo,
+        media: list[Union[InputMediaAudio, InputMediaPhoto, InputMediaVideo,
                           InputMediaDocument]] = []
         from_chat: Optional[Chat] = None
         message_count: int = 0
@@ -298,7 +299,7 @@ class AlbumForwarder:
 
     @staticmethod
     def _scheduler_exception_handler(_: SchedulerProtocol,
-                                     context: Dict[str, Any]) -> None:
+                                     context: dict[str, Any]) -> None:
         logger.exception('Album forward error', exc_info=context['exception'])
 
 
