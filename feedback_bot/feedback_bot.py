@@ -20,9 +20,8 @@ from .helpers import (CHAT_LIST_KEY, CONFIG_KEY, REPLY_PREFIX, AlbumForwarder,
 
 SOFTWARE: Final[str] = get_software()
 USER_COMMANDS: Final[tuple[BotCommand, ...]] = (
-    BotCommand('start', 'Начать работу'),
     BotCommand('help', 'Помощь'),
-    BotCommand('stop', 'Остановить')
+    BotCommand('stop', 'Остановить и не получать больше сообщения')
 )
 ADMIN_COMMANDS: Final[tuple[BotCommand, ...]] = (
     BotCommand('help', 'Помощь'),
