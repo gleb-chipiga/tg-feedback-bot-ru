@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import AsyncIterator, Final
 
 from aiotgbot import (Bot, BotUpdate, ContentType, GroupChatFilter,
-                      HandlerTable, ParseMode, PrivateChatFilter, Runner,
-                      TelegramError)
-from aiotgbot.api_types import BotCommand
-from aiotgbot.bot import PollBot
+                      HandlerTable, ParseMode, PollBot, PrivateChatFilter,
+                      Runner, TelegramError)
+from aiotgbot.api_types import (BotCommand, BotCommandScopeAllPrivateChats,
+                                BotCommandScopeChat)
 from aiotgbot.storage_sqlite import SQLiteStorage
 
 from .helpers import (CHAT_LIST_KEY, CONFIG_KEY, REPLY_PREFIX, AlbumForwarder,
@@ -19,10 +19,21 @@ from .helpers import (CHAT_LIST_KEY, CONFIG_KEY, REPLY_PREFIX, AlbumForwarder,
                       user_link)
 
 SOFTWARE: Final[str] = get_software()
-COMMANDS: Final[tuple[BotCommand, ...]] = (
+USER_COMMANDS: Final[tuple[BotCommand, ...]] = (
     BotCommand('start', 'Начать работу'),
     BotCommand('help', 'Помощь'),
     BotCommand('stop', 'Остановить')
+)
+ADMIN_COMMANDS: Final[tuple[BotCommand, ...]] = (
+    BotCommand('help', 'Помощь'),
+    BotCommand('reply', 'Ответить пользователю'),
+    BotCommand('add_to_group', 'Добавить в группу'),
+    BotCommand('remove_from_group', 'Удалить из группы'),
+    BotCommand('reset', 'Сбросить состояние')
+)
+GROUP_COMMANDS: Final[tuple[BotCommand, ...]] = (
+    BotCommand('help', 'Помощь'),
+    BotCommand('reply', 'Ответить пользователю')
 )
 CHAT_ID_GROUP: Final[str] = 'chat_id'
 REPLY_RXP: 'Final[re.Pattern[str]]' = re.compile(
@@ -53,8 +64,8 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос. '
                            'Также вы можете использовать следующие команды:\n'
-                           '/help - помощь\n'
-                           '/stop - остановить и не получать больше сообщения')
+                           '/help — Помощь\n'
+                           '/stop — Остановить и не получать больше сообщения')
 
 
 @handlers.message(commands=['help'],
@@ -66,8 +77,8 @@ async def user_help_command(bot: Bot, update: BotUpdate) -> None:
     await bot.send_message(update.message.chat.id,
                            'Пришлите сообщение или задайте вопрос. '
                            'Также вы можете использовать следующие команды:\n'
-                           '/help - помощь\n'
-                           '/stop - остановить и не получать больше сообщения')
+                           '/help — Помощь\n'
+                           '/stop — Остановить и не получать больше сообщения')
 
 
 @handlers.message(commands=['stop'],
@@ -104,11 +115,11 @@ async def admin_start_command(bot: Bot, update: BotUpdate) -> None:
     await bot.storage.set(ADMIN_CHAT_ID_KEY, update.message.chat.id)
 
     await bot.send_message(update.message.chat.id,
-                           '/help - помощь\n'
-                           '/reply - ответить пользователю\n'
-                           '/add_to_group - добавить в группу\n'
-                           '/remove_from_group - удалить из группы\n'
-                           '/reset - сбросить состояние')
+                           '/help — Помощь\n'
+                           '/reply — Ответить пользователю\n'
+                           '/add_to_group — Добавить в группу\n'
+                           '/remove_from_group — Удалить из группы\n'
+                           '/reset — Сбросить состояние')
 
 
 @handlers.message(commands=['help'],
@@ -117,11 +128,11 @@ async def admin_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     logger.info('Help command from admin')
     await bot.send_message(update.message.chat.id,
-                           '/help - помощь\n'
-                           '/reply - ответить пользователю\n'
-                           '/add_to_group - добавить в группу\n'
-                           '/remove_from_group - удалить из группы\n'
-                           '/reset - сбросить состояние')
+                           '/help — Помощь\n'
+                           '/reply — Ответить пользователю\n'
+                           '/add_to_group — Добавить в группу\n'
+                           '/remove_from_group — Удалить из группы\n'
+                           '/reset — Сбросить состояние')
 
 
 @handlers.message(commands=['reset'],
@@ -199,6 +210,9 @@ async def group_start_command(bot: Bot, update: BotUpdate) -> None:
     await set_chat(bot, GROUP_CHAT_KEY, update.message.chat)
     await set_chat(bot, CURRENT_CHAT_KEY)
 
+    await bot.set_my_commands(
+        GROUP_COMMANDS, BotCommandScopeChat(update.message.chat.id))
+
     admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
     assert isinstance(admin_chat_id, int)
     await bot.send_message(
@@ -215,8 +229,8 @@ async def group_help_command(bot: Bot, update: BotUpdate) -> None:
     logger.info('Help message in group from "%s"',
                 update.message.from_.to_dict())
     await bot.send_message(update.message.chat.id,
-                           '/help - помощь\n'
-                           '/reply - ответить пользователю')
+                           '/help — Помощь\n'
+                           '/reply — Ответить пользователю')
 
 
 @handlers.message(commands=['reply'],
@@ -298,6 +312,13 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
                 group_chat.id != update.message.chat.id
             ):
                 await bot.leave_chat(update.message.chat.id)
+            elif (
+                group_chat is not None and
+                group_chat.id == update.message.chat.id
+            ):
+                await bot.set_my_commands(
+                    GROUP_COMMANDS,
+                    BotCommandScopeChat(update.message.chat.id))
             break
 
 
@@ -469,9 +490,24 @@ async def run_context(
     bot[ALBUM_FORWARDER_KEY] = AlbumForwarder(bot)
     await bot[ALBUM_FORWARDER_KEY].start()
 
-    if COMMANDS != await bot.get_my_commands():
-        logger.info('Update bot commands')
-        await bot.set_my_commands(COMMANDS)
+    admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+    group_chat = await get_chat(bot, GROUP_CHAT_KEY)
+    await bot.delete_my_commands()
+    await bot.set_my_commands(USER_COMMANDS, BotCommandScopeAllPrivateChats())
+    if admin_chat_id is not None:
+        assert isinstance(admin_chat_id, int)
+        await bot.set_my_commands(
+            ADMIN_COMMANDS, BotCommandScopeChat(admin_chat_id))
+    if group_chat is not None:
+        try:
+            await bot.set_my_commands(
+                GROUP_COMMANDS, BotCommandScopeChat(group_chat.id))
+        except TelegramError as exception:
+            if exception.error_code == 403:
+                logger.info('Can\'t set commands in chat "%s": %s',
+                            group_chat.id, exception.description)
+            else:
+                raise
 
     yield
 
