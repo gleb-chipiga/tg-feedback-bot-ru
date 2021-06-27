@@ -487,7 +487,8 @@ async def run_context(
     bot[CONFIG_KEY] = config
     await bot.start()
 
-    bot[ALBUM_FORWARDER_KEY] = AlbumForwarder(bot)
+    album_forwarder = AlbumForwarder(bot)
+    bot[ALBUM_FORWARDER_KEY] = album_forwarder
     await bot[ALBUM_FORWARDER_KEY].start()
 
     admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
@@ -511,7 +512,7 @@ async def run_context(
 
     yield
 
-    await bot[ALBUM_FORWARDER_KEY].stop()
+    await album_forwarder.stop()
     await bot.stop()
     await storage.close()
 
