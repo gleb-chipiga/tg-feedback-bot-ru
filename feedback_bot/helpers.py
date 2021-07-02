@@ -94,7 +94,7 @@ async def add_chat_to_list(bot: Bot, chat: Chat) -> None:
     chat_list = await get_chat_list(bot)
     if all(item.id != chat.id for item in chat_list):
         chat_list.append(chat)
-        if len(chat_list) > bot[config.chat_list_size]:
+        if len(chat_list) > config.chat_list_size:
             chat_list.pop(0)
         await set_chat_list(bot, chat_list)
 
@@ -340,7 +340,7 @@ class Stopped:
 class Config:
     admin_username: str
     tg_token: str
-    chat_list_size: str
+    chat_list_size: int
 
     @staticmethod
     def load(config_path: Path) -> 'Config':
