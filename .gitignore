@@ -1,6 +1,8 @@
-.env
 .idea
 .mypy_cache
 dist
 volume
 *.sqlite
+justfile
+env
+token.txt

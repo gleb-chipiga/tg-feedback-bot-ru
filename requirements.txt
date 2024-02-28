@@ -1,0 +1,8 @@
+aiotgbot[sqlite]
+aiojobs
+aiorunner
+more-itertools
+msgspec
+pydantic
+pydantic-settings
+uvloop

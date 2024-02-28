@@ -1,0 +1,12 @@
+[tool.isort]
+profile = "black"
+line_length = 79
+
+[tool.black]
+line-length = 79
+
+[tool.mypy]
+plugins = [
+    "pydantic.mypy",
+#    "sqlalchemy.ext.mypy.plugin"
+]

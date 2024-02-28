@@ -1,0 +1,16 @@
+volumes:
+    tg-feedback-bot-ru: {}
+
+secrets:
+    tg_token:
+        file: ./token.txt
+
+services:
+    tg-feedback-bot-ru:
+        build: .
+        restart: unless-stopped
+        volumes:
+          - tg-feedback-bot-ru:/var/tg-feedback-bot-ru
+        secrets:
+            - tg_token
+        env_file: ./env
