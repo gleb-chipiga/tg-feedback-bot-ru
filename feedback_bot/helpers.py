@@ -79,14 +79,14 @@ def chat_key(chat_id: int) -> str:
 async def set_chat(bot: Bot, key: str, chat: Optional[Chat] = None) -> None:
     await bot.storage.set(
         key,
-        msgspec.to_builtins(chat) if chat is not None else None,
+        chat.to_builtins() if chat is not None else None,
     )
 
 
 async def get_chat(bot: Bot, key: str) -> Optional[Chat]:
     data = await bot.storage.get(key)
     if isinstance(data, dict):
-        return msgspec.convert(data, Chat)
+        return Chat.convert(data)
     elif data is None:
         return None
     else:
@@ -99,13 +99,13 @@ async def get_chat_list(bot: Bot) -> list[Chat]:
         raise RuntimeError("Chat list not in storage")
     assert isinstance(chat_list, list)
     assert all(isinstance(item, dict) for item in chat_list)
-    return [msgspec.convert(item, Chat) for item in chat_list]
+    return [Chat.convert(item) for item in chat_list]
 
 
 async def set_chat_list(bot: Bot, chat_list: list[Chat]) -> None:
     await bot.storage.set(
         CHAT_LIST_KEY,
-        [msgspec.to_builtins(chat) for chat in chat_list],
+        [chat.to_builtins() for chat in chat_list],
     )
 
 
@@ -163,7 +163,10 @@ async def send_user_message(bot: Bot, message: Message) -> None:
         logger.debug("Add next media group item to forwarder")
         return
     if current_chat is None:
-        await bot.send_message(message.chat.id, "Нет текущего пользователя")
+        await bot.send_message(
+            message.chat.id,
+            "Нет текущего пользователя",
+        )
         logger.debug("Skip message to user: no current user")
         return
 
@@ -182,7 +185,10 @@ async def send_user_message(bot: Bot, message: Message) -> None:
         logger.debug("Add first media group item to forwarder")
         return
 
-    logger.debug('Send message to "%s"', msgspec.to_builtins(current_chat))
+    logger.debug(
+        'Send message to "%s"',
+        current_chat.to_builtins(),
+    )
     try:
         await bot.copy_message(
             current_chat.id, message.chat.id, message.message_id
@@ -196,7 +202,10 @@ async def send_user_message(bot: Bot, message: Message) -> None:
             parse_mode=ParseMode.HTML,
             link_preview_options=LinkPreviewOptions(is_disabled=True),
         )
-        logger.info('Blocked by user "%s"', msgspec.to_builtins(current_chat))
+        logger.info(
+            'Blocked by user "%s"',
+            current_chat.to_builtins(),
+        )
         return
     else:
         await bot.send_message(
@@ -259,7 +268,10 @@ class AlbumForwarder:
                 self._send(message.media_group_id, chat_id, add_from_info)
             )
         else:
-            logger.warning("Skip media group item as latecomer %s", message)
+            logger.warning(
+                "Skip media group item as latecomer %s",
+                message,
+            )
 
     async def _send(
         self, media_group_id: str, chat_id: int, add_from_info: bool = False
@@ -334,7 +346,10 @@ class AlbumForwarder:
             await self._bot.send_message(
                 from_chat.id, f"Переслано элементов группы: {len(media)}"
             )
-            logger.debug("Forwarded %d media group items", len(media))
+            logger.debug(
+                "Forwarded %d media group items",
+                len(media),
+            )
         elif from_chat is not None:
             await self._bot.send_message(
                 from_chat.id,
@@ -366,7 +381,10 @@ class AlbumForwarder:
     def _scheduler_exception_handler(
         _: Scheduler, context: dict[str, Any]
     ) -> None:
-        logger.exception("Album forward error", exc_info=context["exception"])
+        logger.exception(
+            "Album forward error",
+            exc_info=context["exception"],
+        )
 
 
 def _now_with_tz() -> datetime:

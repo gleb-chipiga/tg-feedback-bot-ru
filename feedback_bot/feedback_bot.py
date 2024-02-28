@@ -4,7 +4,6 @@ import re
 from pathlib import Path
 from typing import AsyncIterator, Final
 
-import msgspec
 from aiorunner import Runner
 from aiotgbot import (
     Bot,
@@ -51,7 +50,8 @@ SOFTWARE: Final[str] = get_software()
 USER_COMMANDS: Final[tuple[BotCommand, ...]] = (
     BotCommand(command="help", description="Помощь"),
     BotCommand(
-        command="stop", description="Остановить и не получать больше сообщения"
+        command="stop",
+        description="Остановить и не получать больше сообщения",
     ),
 )
 ADMIN_COMMANDS: Final[tuple[BotCommand, ...]] = (
@@ -89,7 +89,7 @@ async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Start command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     stopped = await Stopped.get(bot, update.message.chat.id)
     if stopped is not None:
@@ -113,7 +113,7 @@ async def user_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Help command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     await bot.send_message(
         update.message.chat.id,
@@ -132,7 +132,7 @@ async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Stop command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     stopped = Stopped()
     await stopped.set(bot, update.message.from_.id)
@@ -197,7 +197,10 @@ async def admin_reset_command(bot: Bot, update: BotUpdate) -> None:
     logger.info("Reset command from admin")
     await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
     await bot.storage.set(CURRENT_CHAT_KEY)
-    await bot.send_message(update.message.chat.id, "Состояние сброшено.")
+    await bot.send_message(
+        update.message.chat.id,
+        "Состояние сброшено.",
+    )
 
 
 @handlers.message(
@@ -209,11 +212,14 @@ async def add_to_group_command(bot: Bot, update: BotUpdate) -> None:
 
     logger.info(
         'Add to group command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     if await get_chat(bot, GROUP_CHAT_KEY) is not None:
         logger.info("Already in group. Ignore command")
-        await bot.send_message(update.message.chat.id, "Уже в группе.")
+        await bot.send_message(
+            update.message.chat.id,
+            "Уже в группе.",
+        )
         return
 
     bot_username = (await bot.get_me()).username
@@ -235,12 +241,15 @@ async def remove_from_group_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Remove from group command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
         logger.info("Not in group. Ignore command")
-        await bot.send_message(update.message.chat.id, "Не в группе.")
+        await bot.send_message(
+            update.message.chat.id,
+            "Не в группе.",
+        )
         return
 
     try:
@@ -260,7 +269,7 @@ async def remove_from_group_command(bot: Bot, update: BotUpdate) -> None:
 
     logger.info(
         'Removed from group "%s"',
-        msgspec.to_builtins(group_chat),
+        group_chat.to_builtins(),
     )
 
 
@@ -272,12 +281,12 @@ async def group_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Start in group command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     if await get_chat(bot, GROUP_CHAT_KEY):
         logger.info(
             'Attempt start in group "%s"',
-            msgspec.to_builtins(update.message.chat),
+            update.message.chat.to_builtins(),
         )
         return
 
@@ -299,7 +308,7 @@ async def group_start_command(bot: Bot, update: BotUpdate) -> None:
 
     logger.info(
         'Started in group "%s"',
-        msgspec.to_builtins(update.message.chat),
+        update.message.chat.to_builtins(),
     )
 
 
@@ -309,7 +318,7 @@ async def group_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Help message in group from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     await bot.send_message(
         update.message.chat.id,
@@ -325,7 +334,7 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Reply command from admin "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
@@ -337,7 +346,10 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
         logger.debug("Ignore reply command in private chat")
         return
     if await bot.storage.get(WAIT_REPLY_FROM_ID_KEY) is not None:
-        await bot.send_message(update.message.chat.id, "Уже жду сообщение.")
+        await bot.send_message(
+            update.message.chat.id,
+            "Уже жду сообщение.",
+        )
         logger.debug("Already wait message. Ignore command")
         return
 
@@ -350,7 +362,7 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Reply in group command from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
@@ -358,7 +370,8 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
         return
     if group_chat is None:
         await bot.send_message(
-            update.message.chat.id, "Не принимаю сообщения."
+            update.message.chat.id,
+            "Не принимаю сообщения.",
         )
         logger.debug("Ignore reply command in group")
         return
@@ -388,7 +401,10 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
 async def group_new_members(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.new_chat_members is not None
-    logger.info('New group members message "%s"', update.message.chat)
+    logger.info(
+        'New group members message "%s"',
+        update.message.chat,
+    )
     me = await bot.get_me()
     for user in update.message.new_chat_members:
         if user.id == me.id:
@@ -401,8 +417,8 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
             logger.info(
-                'Bot added to grouip "%s"',
-                msgspec.to_builtins(update.message.chat),
+                'Bot added to group "%s"',
+                update.message.chat.to_builtins(),
             )
             group_chat = await get_chat(bot, GROUP_CHAT_KEY)
             if (
@@ -427,7 +443,7 @@ async def group_left_member(bot: Bot, update: BotUpdate) -> None:
     assert update.message.left_chat_member is not None
     logger.info(
         'Left group member message "%s"',
-        msgspec.to_builtins(update.message),
+        update.message.to_builtins(),
     )
     me = await bot.get_me()
     if update.message.left_chat_member.id == me.id:
@@ -443,7 +459,10 @@ async def group_left_member(bot: Bot, update: BotUpdate) -> None:
         group_chat = await get_chat(bot, GROUP_CHAT_KEY)
         if group_chat is not None and update.message.chat.id == group_chat.id:
             await set_chat(bot, GROUP_CHAT_KEY)
-            logger.info('Forget chat "%s"', update.message.chat.title)
+            logger.info(
+                'Forget chat "%s"',
+                update.message.chat.title,
+            )
 
 
 @handlers.message(filters=[PrivateChatFilter(), FromUserFilter()])
@@ -454,13 +473,16 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message.from_ is not None
     logger.info(
         'Message from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        update.message.from_.to_builtins(),
     )
     await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
     stopped = await Stopped.get(bot, update.message.chat.id)
     if stopped is not None:
         await Stopped.delete(bot, update.message.chat.id)
-        await bot.send_message(update.message.chat.id, "С возвращением!")
+        await bot.send_message(
+            update.message.chat.id,
+            "С возвращением!",
+        )
 
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
@@ -472,7 +494,7 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
     if update.message.audio is not None or update.message.sticker is not None:
         logger.info(
             'Message from user "%s" contains audio or sticker',
-            msgspec.to_builtins(update.message.from_),
+            update.message.from_.to_builtins(),
         )
         await send_from_message(bot, forward_chat_id, update.message.chat)
 
@@ -493,8 +515,8 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info(
-        'Reply messgae in group from "%s"',
-        msgspec.to_builtins(update.message.from_),
+        'Reply message in group from "%s"',
+        update.message.from_.to_builtins(),
     )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
@@ -508,7 +530,7 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
         logger.info(
             'Ignore message from group "%s" user "%s"',
             update.message.chat.title,
-            msgspec.to_builtins(update.message.from_),
+            update.message.from_.to_builtins(),
         )
         return
 
@@ -521,7 +543,10 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
 @handlers.message(filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
-    logger.info('Message from admin "%s"', msgspec.to_builtins(update.message))
+    logger.info(
+        'Message from admin "%s"',
+        update.message.to_builtins(),
+    )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
         await bot.send_message(
@@ -550,7 +575,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     assert update.callback_query.message is not None
     logger.info(
         'Reply callback query from "%s"',
-        msgspec.to_builtins(update.callback_query.from_),
+        update.callback_query.from_.to_builtins(),
     )
     await bot.answer_callback_query(update.callback_query.id)
 
@@ -566,7 +591,7 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
         )
         logger.info(
             'Skip message sending to unknown user from "%s"',
-            msgspec.to_builtins(update.callback_query.from_),
+            update.callback_query.from_.to_builtins(),
         )
         return
     stopped = await Stopped.get(bot, current_chat_id)
@@ -659,7 +684,10 @@ def setup_logging() -> None:
         logging.getLogger("aiosqlite").setLevel(logging.INFO)
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
-    logger.info("PYTHONOPTIMIZE=%s", os.environ.get("PYTHONOPTIMIZE"))
+    logger.info(
+        "PYTHONOPTIMIZE=%s",
+        os.environ.get("PYTHONOPTIMIZE"),
+    )
     logger.info(SOFTWARE)
 
 
@@ -669,7 +697,11 @@ def main() -> None:
     import uvloop
 
     parser = argparse.ArgumentParser(description="Feedback aiotgbot bot")
-    parser.add_argument("storage_path", type=path, help="storage path")
+    parser.add_argument(
+        "storage_path",
+        type=path,
+        help="storage path",
+    )
     args = parser.parse_args()
     if not (args.storage_path.is_file() or args.storage_path.parent.is_dir()):
         parser.error(
