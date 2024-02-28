@@ -28,6 +28,7 @@ from aiotgbot.api_types import (
     User,
 )
 from more_itertools import chunked
+from msgspec import Struct
 
 from .settings import SETTINGS_KEY
 
@@ -171,7 +172,7 @@ async def send_user_message(bot: Bot, message: Message) -> None:
         await bot.send_message(
             message.chat.id,
             f"{user_link(current_chat)} меня заблокировал "
-            f"{stopped.dt:%Y-%m-%d %H:%M:%S %Z}.",
+            f"{stopped.datetime:%Y-%m-%d %H:%M:%S %Z}.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -372,9 +373,8 @@ def _now_with_tz() -> datetime:
     return datetime.now(timezone(timedelta(seconds=-time.timezone)))
 
 
-@dataclass(frozen=True, slots=True)
-class Stopped:
-    dt: datetime = field(default_factory=_now_with_tz)
+class Stopped(Struct, frozen=True):
+    datetime: datetime = field(default_factory=_now_with_tz)
     blocked: bool = False
 
     @staticmethod
@@ -382,21 +382,12 @@ class Stopped:
         return f"stopped|{chat_id}"
 
     async def set(self, bot: Bot, chat_id: int) -> None:
-        await bot.storage.set(
-            self._key(chat_id),
-            {"dt": self.dt.isoformat(), "error": self.blocked},
-        )
+        await bot.storage.set(self._key(chat_id), msgspec.to_builtins(self))
 
     @staticmethod
     async def get(bot: Bot, chat_id: int) -> Optional["Stopped"]:
         data = await bot.storage.get(Stopped._key(chat_id))
-        if data is not None:
-            assert isinstance(data, dict)
-            assert isinstance(data["dt"], str)
-            assert isinstance(data["dt"], bool)
-            return Stopped(datetime.fromisoformat(data["dt"]), data["error"])
-        else:
-            return None
+        return msgspec.convert(data, Stopped) if data is not None else None
 
     @staticmethod
     async def delete(bot: Bot, chat_id: int) -> None:
