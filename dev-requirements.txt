@@ -1,9 +1,0 @@
-black
-flake8
-inotify
-isort
-mypy
-#pydantic
-#pydantic-settings
-sort-all
-types-PyYAML
