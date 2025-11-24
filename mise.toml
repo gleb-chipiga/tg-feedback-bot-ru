@@ -1,0 +1,24 @@
+[tasks.format]
+description = "Format code with Ruff"
+run = "uv run ruff format ."
+
+[tasks.lint]
+description = "Lint sources with Ruff"
+run = "uv run ruff check src/tg_feedback_bot_ru"
+
+[tasks.mypy]
+description = "Type-check with mypy --strict"
+run = "uv run mypy --strict src/tg_feedback_bot_ru"
+
+[tasks.basedpyright]
+description = "Type-check with basedpyright"
+run = "uv run basedpyright"
+
+[tasks.all]
+description = "Format, lint, and type-check"
+depends = ["format", "lint", "mypy", "basedpyright"]
+run = "true"
+
+[tasks.run]
+description = "Run the feedback bot"
+run = "uv run python -m tg_feedback_bot_ru"

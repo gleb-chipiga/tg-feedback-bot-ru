@@ -1,0 +1,5 @@
+TZ=Europe/Moscow
+ADMIN_USERNAME=admin_user
+CHAT_LIST_SIZE=10
+POSTGRES_DSN=postgresql+asyncpg://postgres:postgres@postgres/postgres
+TG_TOKEN=123456789:ABCDEF_example_token

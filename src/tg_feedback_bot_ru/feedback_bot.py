@@ -1,8 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import re
-from pathlib import Path
-from typing import AsyncIterator, Final
+import sys
+from collections.abc import AsyncIterator, Callable
+from textwrap import dedent
+from typing import Final, cast
 
 from aiorunner import Runner
 from aiotgbot import (
@@ -20,31 +24,43 @@ from aiotgbot.api_types import (
     BotCommand,
     BotCommandScopeAllPrivateChats,
     BotCommandScopeChat,
+    ChatId,
     LinkPreviewOptions,
 )
-from aiotgbot.storage_sqlite import SQLiteStorage
+from aiotgbot.storage_sqlalchemy import SqlalchemyStorage
+from sqlalchemy.ext.asyncio import create_async_engine
 
+from .album_forwarder import (
+    ALBUM_FORWARDER_KEY,
+    AlbumForwarder,
+    send_user_message,
+)
+from .filters import FromAdminFilter, FromUserFilter
 from .helpers import (
     CHAT_LIST_KEY,
     REPLY_PREFIX,
-    AlbumForwarder,
-    FromAdminFilter,
-    FromUserFilter,
-    Stopped,
     add_chat_to_list,
     chat_key,
-    debug,
+    get_admin_chat_id,
     get_chat,
     get_software,
-    path,
+    get_wait_reply_from_id,
     remove_chat_from_list,
     reply_menu,
     send_from_message,
-    send_user_message,
+    set_admin_chat_id,
     set_chat,
+    set_wait_reply_from_id,
     user_link,
 )
 from .settings import SETTINGS_KEY, Settings
+from .stopped import Stopped
+from .storage_keys import (
+    ADMIN_CHAT_ID_KEY,
+    CURRENT_CHAT_KEY,
+    GROUP_CHAT_KEY,
+    WAIT_REPLY_FROM_ID_KEY,
+)
 
 SOFTWARE: Final[str] = get_software()
 USER_COMMANDS: Final[tuple[BotCommand, ...]] = (
@@ -66,141 +82,132 @@ GROUP_COMMANDS: Final[tuple[BotCommand, ...]] = (
     BotCommand(command="reply", description="Ответить пользователю"),
 )
 CHAT_ID_GROUP: Final[str] = "chat_id"
-REPLY_RXP: "Final[re.Pattern[str]]" = re.compile(
+REPLY_RXP: Final[re.Pattern[str]] = re.compile(
     rf"^{REPLY_PREFIX}\|(?P<{CHAT_ID_GROUP}>-?\d+)$"
 )
-ALBUM_FORWARDER_KEY: Final[str] = "album_forwarder"
-GROUP_CHAT_KEY: Final[str] = "group_chat"
-ADMIN_CHAT_ID_KEY: Final[str] = "admin_chat_id"
-CURRENT_CHAT_KEY: Final[str] = "current_chat"
-WAIT_REPLY_FROM_ID_KEY: Final[str] = "wait_reply_from_id"
-TZ_KEY: Final["str"] = "TZ"
+TZ_KEY: Final[str] = "TZ"
 
 
 logger = logging.getLogger("feedback-bot")
 handlers = HandlerTable()
 
 
-@handlers.message(
-    commands=["start"], filters=[PrivateChatFilter(), FromUserFilter()]
-)
+@handlers.message(commands=["start"], filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Start command from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Start command from "%s"', update.message.from_.to_builtins())
     stopped = await Stopped.get(bot, update.message.chat.id)
     if stopped is not None:
         await Stopped.delete(bot, update.message.chat.id)
-        await bot.send_message(update.message.chat.id, "С возвращением!")
+        _ = await bot.send_message(update.message.chat.id, "С возвращением!")
     await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
-    await bot.send_message(
+    _ = await bot.send_message(
         update.message.chat.id,
-        "Пришлите сообщение или задайте вопрос. "
-        "Также вы можете использовать следующие команды:\n"
-        "/help — Помощь\n"
-        "/stop — Остановить и не получать больше сообщения",
+        dedent(
+            """\
+            Пришлите сообщение или задайте вопрос.
+
+            Также вы можете использовать следующие команды:
+            /help — Помощь
+            /stop — Остановить и не получать больше сообщения"""
+        ),
     )
 
 
-@handlers.message(
-    commands=["help"], filters=[PrivateChatFilter(), FromUserFilter()]
-)
+@handlers.message(commands=["help"], filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Help command from "%s"',
-        update.message.from_.to_builtins(),
-    )
-    await bot.send_message(
+    logger.info('Help command from "%s"', update.message.from_.to_builtins())
+    _ = await bot.send_message(
         update.message.chat.id,
-        "Пришлите сообщение или задайте вопрос. "
-        "Также вы можете использовать следующие команды:\n"
-        "/help — Помощь\n"
-        "/stop — Остановить и не получать больше сообщения",
+        dedent(
+            """\
+            Пришлите сообщение или задайте вопрос.
+
+            Также вы можете использовать следующие команды:
+            /help — Помощь
+            /stop — Остановить и не получать больше сообщения"""
+        ),
     )
 
 
-@handlers.message(
-    commands=["stop"], filters=[PrivateChatFilter(), FromUserFilter()]
-)
+@handlers.message(commands=["stop"], filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_stop_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Stop command from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    user_chat_id = ChatId(update.message.from_.id)
+    logger.info('Stop command from "%s"', update.message.from_.to_builtins())
     stopped = Stopped()
-    await stopped.set(bot, update.message.from_.id)
-    await remove_chat_from_list(bot, update.message.from_.id)
+    await stopped.set(bot, user_chat_id)
+    await remove_chat_from_list(bot, user_chat_id)
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
-        notify_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-        assert isinstance(notify_chat_id, int)
+        notify_chat_id = await get_admin_chat_id(bot)
+        if notify_chat_id is None:
+            logger.error("Admin chat id is not set")
+            return
     else:
         notify_chat_id = group_chat.id
-    await bot.send_message(
-        notify_chat_id,
+    blocked_text = (
         f"{user_link(update.message.from_)} меня заблокировал "
-        f"{stopped.datetime:%Y-%m-%d %H:%M:%S %Z}.",
+        f"{stopped.date_time:%Y-%m-%d %H:%M:%S %Z}."
+    )
+    _ = await bot.send_message(
+        notify_chat_id,
+        blocked_text,
         parse_mode=ParseMode.HTML,
     )
     current_chat = await get_chat(bot, CURRENT_CHAT_KEY)
-    if current_chat is not None and current_chat.id == update.message.from_.id:
-        await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
+    if current_chat is not None and ChatId(current_chat.id) == user_chat_id:
+        await set_wait_reply_from_id(bot, None)
         await set_chat(bot, CURRENT_CHAT_KEY)
 
 
-@handlers.message(
-    commands=["start"], filters=[PrivateChatFilter(), FromAdminFilter()]
-)
+@handlers.message(commands=["start"], filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     logger.info("Start command from admin")
-    await bot.storage.set(ADMIN_CHAT_ID_KEY, update.message.chat.id)
+    await set_admin_chat_id(bot, update.message.chat.id)
 
-    await bot.send_message(
+    _ = await bot.send_message(
         update.message.chat.id,
-        "/help — Помощь\n"
-        "/reply — Ответить пользователю\n"
-        "/add_to_group — Добавить в группу\n"
-        "/remove_from_group — Удалить из группы\n"
-        "/reset — Сбросить состояние",
+        dedent(
+            """\
+            /help — Помощь
+            /reply — Ответить пользователю
+            /add_to_group — Добавить в группу
+            /remove_from_group — Удалить из группы
+            /reset — Сбросить состояние"""
+        ),
     )
 
 
-@handlers.message(
-    commands=["help"], filters=[PrivateChatFilter(), FromAdminFilter()]
-)
+@handlers.message(commands=["help"], filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     logger.info("Help command from admin")
-    await bot.send_message(
+    _ = await bot.send_message(
         update.message.chat.id,
-        "/help — Помощь\n"
-        "/reply — Ответить пользователю\n"
-        "/add_to_group — Добавить в группу\n"
-        "/remove_from_group — Удалить из группы\n"
-        "/reset — Сбросить состояние",
+        dedent(
+            """\
+            /help — Помощь
+            /reply — Ответить пользователю
+            /add_to_group — Добавить в группу
+            /remove_from_group — Удалить из группы
+            /reset — Сбросить состояние"""
+        ),
     )
 
 
-@handlers.message(
-    commands=["reset"], filters=[PrivateChatFilter(), FromAdminFilter()]
-)
+@handlers.message(commands=["reset"], filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_reset_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     logger.info("Reset command from admin")
-    await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
+    await set_wait_reply_from_id(bot, None)
     await bot.storage.set(CURRENT_CHAT_KEY)
-    await bot.send_message(
-        update.message.chat.id,
-        "Состояние сброшено.",
-    )
+    _ = await bot.send_message(update.message.chat.id, "Состояние сброшено.")
 
 
 @handlers.message(
@@ -209,22 +216,13 @@ async def admin_reset_command(bot: Bot, update: BotUpdate) -> None:
 async def add_to_group_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-
-    logger.info(
-        'Add to group command from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Add to group command from "%s"', update.message.from_.to_builtins())
     if await get_chat(bot, GROUP_CHAT_KEY) is not None:
-        logger.info("Already in group. Ignore command")
-        await bot.send_message(
-            update.message.chat.id,
-            "Уже в группе.",
-        )
+        _ = await bot.send_message(update.message.chat.id, "Уже в группе.")
         return
-
     bot_username = (await bot.get_me()).username
     link = f"tg://resolve?domain={bot_username}&startgroup=startgroup"
-    await bot.send_message(
+    _ = await bot.send_message(
         update.message.chat.id,
         f'Для добавления в группу <a href="{link}">перейдите по ссылке</a>.',
         parse_mode=ParseMode.HTML,
@@ -233,126 +231,99 @@ async def add_to_group_command(bot: Bot, update: BotUpdate) -> None:
 
 
 @handlers.message(
-    commands=["remove_from_group"],
-    filters=[PrivateChatFilter(), FromAdminFilter()],
+    commands=["remove_from_group"], filters=[PrivateChatFilter(), FromAdminFilter()]
 )
 async def remove_from_group_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
     logger.info(
-        'Remove from group command from "%s"',
-        update.message.from_.to_builtins(),
+        'Remove from group command from "%s"', update.message.from_.to_builtins()
     )
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
-        logger.info("Not in group. Ignore command")
-        await bot.send_message(
-            update.message.chat.id,
-            "Не в группе.",
-        )
+        _ = await bot.send_message(update.message.chat.id, "Не в группе.")
         return
-
     try:
-        await bot.leave_chat(group_chat.id)
+        _ = await bot.leave_chat(group_chat.id)
     except TelegramError as exception:
         logger.error('Leave chat error "%s"', exception)
-
-    await bot.send_message(
+    _ = await bot.send_message(
         update.message.chat.id,
         f"Удален из группы <b>{group_chat.title}</b>.",
         parse_mode=ParseMode.HTML,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
-
     await set_chat(bot, GROUP_CHAT_KEY)
     await set_chat(bot, CURRENT_CHAT_KEY)
 
-    logger.info(
-        'Removed from group "%s"',
-        group_chat.to_builtins(),
-    )
 
-
-@handlers.message(
-    commands=["start"], filters=[GroupChatFilter(), FromAdminFilter()]
-)
+@handlers.message(commands=["start"], filters=[GroupChatFilter(), FromAdminFilter()])
 async def group_start_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Start in group command from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Start in group command from "%s"', update.message.from_.to_builtins())
     if await get_chat(bot, GROUP_CHAT_KEY):
-        logger.info(
-            'Attempt start in group "%s"',
-            update.message.chat.to_builtins(),
-        )
+        logger.info('Attempt start in group "%s"', update.message.chat.to_builtins())
         return
 
     await set_chat(bot, GROUP_CHAT_KEY, update.message.chat)
     await set_chat(bot, CURRENT_CHAT_KEY)
 
-    await bot.set_my_commands(
-        GROUP_COMMANDS, BotCommandScopeChat(chat_id=update.message.chat.id)
+    _ = await bot.set_my_commands(
+        GROUP_COMMANDS,
+        BotCommandScopeChat(chat_id=update.message.chat.id),
     )
 
-    admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-    assert isinstance(admin_chat_id, int)
-    await bot.send_message(
+    admin_chat_id = await get_admin_chat_id(bot)
+    if admin_chat_id is None:
+        _ = await bot.send_message(
+            ChatId(update.message.from_.id), "Что-то сломалось внутри бота."
+        )
+        logger.error("Admin user id not set")
+        return
+
+    _ = await bot.send_message(
         admin_chat_id,
         f"Запущен в <b>{update.message.chat.title}</b>.",
         parse_mode=ParseMode.HTML,
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
-
-    logger.info(
-        'Started in group "%s"',
-        update.message.chat.to_builtins(),
-    )
+    logger.info('Started in group "%s"', update.message.chat.to_builtins())
 
 
 @handlers.message(commands=["help"], filters=[GroupChatFilter()])
 async def group_help_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Help message in group from "%s"',
-        update.message.from_.to_builtins(),
-    )
-    await bot.send_message(
+    logger.info('Help message in group from "%s"', update.message.from_.to_builtins())
+    _ = await bot.send_message(
         update.message.chat.id,
-        "/help — Помощь\n" "/reply — Ответить пользователю",
+        dedent(
+            """\
+            /help — Помощь
+            /reply — Ответить пользователю"""
+        ),
     )
 
 
-@handlers.message(
-    commands=["reply"], filters=[PrivateChatFilter(), FromAdminFilter()]
-)
+@handlers.message(commands=["reply"], filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Reply command from admin "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Reply command from admin "%s"', update.message.from_.to_builtins())
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
-        await bot.send_message(
+        _ = await bot.send_message(
             update.message.chat.id,
             f"Принимаю сообщения в группе <b>{group_chat.title}</b>.",
             parse_mode=ParseMode.HTML,
         )
         logger.debug("Ignore reply command in private chat")
         return
-    if await bot.storage.get(WAIT_REPLY_FROM_ID_KEY) is not None:
-        await bot.send_message(
-            update.message.chat.id,
-            "Уже жду сообщение.",
-        )
+    if await get_wait_reply_from_id(bot) is not None:
+        _ = await bot.send_message(update.message.chat.id, "Уже жду сообщение.")
         logger.debug("Already wait message. Ignore command")
         return
-
     await reply_menu(bot, update.message.chat.id)
 
 
@@ -360,33 +331,24 @@ async def admin_reply_command(bot: Bot, update: BotUpdate) -> None:
 async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Reply in group command from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Reply in group command from "%s"', update.message.from_.to_builtins())
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
-        await bot.leave_chat(update.message.chat.id)
+        _ = await bot.leave_chat(update.message.chat.id)
         return
     if group_chat is None:
-        await bot.send_message(
-            update.message.chat.id,
-            "Не принимаю сообщения.",
-        )
+        _ = await bot.send_message(update.message.chat.id, "Не принимаю сообщения.")
         logger.debug("Ignore reply command in group")
         return
-    wait_reply_from_id = await bot.storage.get(WAIT_REPLY_FROM_ID_KEY)
+    wait_reply_from_id = await get_wait_reply_from_id(bot)
     if wait_reply_from_id is not None:
-        assert isinstance(wait_reply_from_id, int)
-        member = await bot.get_chat_member(
-            update.message.chat.id, wait_reply_from_id
-        )
+        member = await bot.get_chat_member(update.message.chat.id, wait_reply_from_id)
         member_link = (
             user_link(member.user)
             if member.user.username is None
             else f"@{member.user.username}"
         )
-        await bot.send_message(
+        _ = await bot.send_message(
             update.message.chat.id,
             f"Уже жду сообщение от {member_link}.",
             parse_mode=ParseMode.HTML,
@@ -401,36 +363,26 @@ async def group_reply_command(bot: Bot, update: BotUpdate) -> None:
 async def group_new_members(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.new_chat_members is not None
-    logger.info(
-        'New group members message "%s"',
-        update.message.chat,
-    )
+    logger.info('New group members message "%s"', update.message.chat)
     me = await bot.get_me()
+    admin_chat_id = await get_admin_chat_id(bot)
+    if admin_chat_id is None:
+        logger.error("Admin user id not set")
+        return
     for user in update.message.new_chat_members:
         if user.id == me.id:
-            admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-            assert isinstance(admin_chat_id, int)
-            await bot.send_message(
+            _ = await bot.send_message(
                 admin_chat_id,
                 f"Добавлен в группу <b>{update.message.chat.title}</b>.",
                 parse_mode=ParseMode.HTML,
                 link_preview_options=LinkPreviewOptions(is_disabled=True),
             )
-            logger.info(
-                'Bot added to group "%s"',
-                update.message.chat.to_builtins(),
-            )
+            logger.info('Bot added to group "%s"', update.message.chat.to_builtins())
             group_chat = await get_chat(bot, GROUP_CHAT_KEY)
-            if (
-                group_chat is not None
-                and group_chat.id != update.message.chat.id
-            ):
-                await bot.leave_chat(update.message.chat.id)
-            elif (
-                group_chat is not None
-                and group_chat.id == update.message.chat.id
-            ):
-                await bot.set_my_commands(
+            if group_chat is not None and group_chat.id != update.message.chat.id:
+                _ = await bot.leave_chat(update.message.chat.id)
+            elif group_chat is not None and group_chat.id == update.message.chat.id:
+                _ = await bot.set_my_commands(
                     GROUP_COMMANDS,
                     BotCommandScopeChat(chat_id=update.message.chat.id),
                 )
@@ -441,15 +393,14 @@ async def group_new_members(bot: Bot, update: BotUpdate) -> None:
 async def group_left_member(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.left_chat_member is not None
-    logger.info(
-        'Left group member message "%s"',
-        update.message.to_builtins(),
-    )
+    logger.info('Left group member message "%s"', update.message.to_builtins())
     me = await bot.get_me()
+    admin_chat_id = await get_admin_chat_id(bot)
+    if admin_chat_id is None:
+        logger.error("Admin user id not set")
+        return
     if update.message.left_chat_member.id == me.id:
-        admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-        assert isinstance(admin_chat_id, int)
-        await bot.send_message(
+        _ = await bot.send_message(
             admin_chat_id,
             f"Вышел из группы <b>{update.message.chat.title}</b>.",
             parse_mode=ParseMode.HTML,
@@ -459,52 +410,47 @@ async def group_left_member(bot: Bot, update: BotUpdate) -> None:
         group_chat = await get_chat(bot, GROUP_CHAT_KEY)
         if group_chat is not None and update.message.chat.id == group_chat.id:
             await set_chat(bot, GROUP_CHAT_KEY)
-            logger.info(
-                'Forget chat "%s"',
-                update.message.chat.title,
-            )
+            logger.info('Forget chat "%s"', update.message.chat.title)
 
 
 @handlers.message(filters=[PrivateChatFilter(), FromUserFilter()])
 async def user_message(bot: Bot, update: BotUpdate) -> None:
-    album_forwarder = bot.get(ALBUM_FORWARDER_KEY)
-    assert isinstance(album_forwarder, AlbumForwarder)
+    album_forwarder = bot[ALBUM_FORWARDER_KEY]
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Message from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Message from "%s"', update.message.from_.to_builtins())
     await set_chat(bot, chat_key(update.message.chat.id), update.message.chat)
     stopped = await Stopped.get(bot, update.message.chat.id)
     if stopped is not None:
         await Stopped.delete(bot, update.message.chat.id)
-        await bot.send_message(
-            update.message.chat.id,
-            "С возвращением!",
-        )
+        _ = await bot.send_message(update.message.chat.id, "С возвращением!")
 
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is None:
-        forward_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
-        assert isinstance(forward_chat_id, int)
+        forward_chat_id = await get_admin_chat_id(bot)
+        if forward_chat_id is None:
+            _ = await bot.send_message(
+                ChatId(update.message.from_.id), "Что-то сломалось внутри бота."
+            )
+            logger.error("Admin user id not set")
+            return
     else:
         forward_chat_id = group_chat.id
 
     if update.message.audio is not None or update.message.sticker is not None:
-        logger.info(
-            'Message from user "%s" contains audio or sticker',
-            update.message.from_.to_builtins(),
-        )
         await send_from_message(bot, forward_chat_id, update.message.chat)
 
     if update.message.media_group_id is not None:
         await album_forwarder.add_message(
-            update.message, forward_chat_id, add_from_info=True
+            update.message,
+            forward_chat_id,
+            add_from_info=True,
         )
     else:
-        await bot.forward_message(
-            forward_chat_id, update.message.chat.id, update.message.message_id
+        _ = await bot.forward_message(
+            forward_chat_id,
+            update.message.chat.id,
+            update.message.message_id,
         )
 
     await add_chat_to_list(bot, update.message.chat)
@@ -514,15 +460,12 @@ async def user_message(bot: Bot, update: BotUpdate) -> None:
 async def group_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
     assert update.message.from_ is not None
-    logger.info(
-        'Reply message in group from "%s"',
-        update.message.from_.to_builtins(),
-    )
+    logger.info('Reply message in group from "%s"', update.message.from_.to_builtins())
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None and group_chat.id != update.message.chat.id:
-        await bot.leave_chat(update.message.chat.id)
+        _ = await bot.leave_chat(update.message.chat.id)
         return
-    wait_reply_from_id = await bot.storage.get(WAIT_REPLY_FROM_ID_KEY)
+    wait_reply_from_id = await get_wait_reply_from_id(bot)
     if (
         wait_reply_from_id != update.message.from_.id
         and update.message.media_group_id is None
@@ -535,21 +478,17 @@ async def group_message(bot: Bot, update: BotUpdate) -> None:
         return
 
     await send_user_message(bot, update.message)
-
-    await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
+    await set_wait_reply_from_id(bot, None)
     await set_chat(bot, CURRENT_CHAT_KEY)
 
 
 @handlers.message(filters=[PrivateChatFilter(), FromAdminFilter()])
 async def admin_message(bot: Bot, update: BotUpdate) -> None:
     assert update.message is not None
-    logger.info(
-        'Message from admin "%s"',
-        update.message.to_builtins(),
-    )
+    logger.info('Message from admin "%s"', update.message.to_builtins())
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
     if group_chat is not None:
-        await bot.send_message(
+        _ = await bot.send_message(
             update.message.chat.id,
             f"Принимаю сообщения в группе <b>{group_chat.title}</b>.",
             parse_mode=ParseMode.HTML,
@@ -557,14 +496,13 @@ async def admin_message(bot: Bot, update: BotUpdate) -> None:
         )
         logger.info("Ignore message in private chat with admin")
         return
-    wait_reply_from_id = await bot.storage.get(WAIT_REPLY_FROM_ID_KEY)
+    wait_reply_from_id = await get_wait_reply_from_id(bot)
     if wait_reply_from_id is None and update.message.media_group_id is None:
         logger.info("Ignore message from admin")
         return
 
     await send_user_message(bot, update.message)
-
-    await bot.storage.set(WAIT_REPLY_FROM_ID_KEY)
+    await set_wait_reply_from_id(bot, None)
     await set_chat(bot, CURRENT_CHAT_KEY)
 
 
@@ -574,17 +512,16 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     assert update.callback_query.data is not None
     assert update.callback_query.message is not None
     logger.info(
-        'Reply callback query from "%s"',
-        update.callback_query.from_.to_builtins(),
+        'Reply callback query from "%s"', update.callback_query.from_.to_builtins()
     )
-    await bot.answer_callback_query(update.callback_query.id)
+    _ = await bot.answer_callback_query(update.callback_query.id)
 
     data_match = REPLY_RXP.match(update.callback_query.data)
-    assert data_match is not None, "Reply to data not match format"
-    current_chat_id = int(data_match.group(CHAT_ID_GROUP))
+    assert data_match is not None, "Reply data must match format"
+    current_chat_id = ChatId(int(data_match.group(CHAT_ID_GROUP)))
     current_chat = await get_chat(bot, chat_key(current_chat_id))
     if current_chat is None:
-        await bot.edit_message_text(
+        _ = await bot.edit_message_text(
             "Ошибка. Сообщение не отправить.",
             chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id,
@@ -596,19 +533,20 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
         return
     stopped = await Stopped.get(bot, current_chat_id)
     if stopped is not None:
-        await bot.edit_message_text(
+        blocked_text = (
             f"{user_link(current_chat)} меня заблокировал "
-            f"{stopped.datetime:%Y-%m-%d %H:%M:%S %Z}.",
+            f"{stopped.date_time:%Y-%m-%d %H:%M:%S %Z}."
+        )
+        _ = await bot.edit_message_text(
+            blocked_text,
             chat_id=update.callback_query.message.chat.id,
             message_id=update.callback_query.message.message_id,
             parse_mode=ParseMode.HTML,
         )
         return
-    await bot.storage.set(
-        WAIT_REPLY_FROM_ID_KEY, update.callback_query.from_.id
-    )
+    await set_wait_reply_from_id(bot, update.callback_query.from_.id)
     await set_chat(bot, CURRENT_CHAT_KEY, current_chat)
-    await bot.edit_message_text(
+    _ = await bot.edit_message_text(
         f"Введите сообщение для {user_link(current_chat)}.",
         chat_id=update.callback_query.message.chat.id,
         message_id=update.callback_query.message.message_id,
@@ -617,13 +555,12 @@ async def reply_callback(bot: Bot, update: BotUpdate) -> None:
     )
 
 
-async def run_context(
-    _: Runner, storage_path: Path, settings: Settings
-) -> AsyncIterator[None]:
-    if debug():
+async def run_context(_: Runner, settings: Settings) -> AsyncIterator[None]:
+    if __debug__:
         asyncio.get_running_loop().slow_callback_duration = 0.01
 
-    storage = SQLiteStorage(storage_path)
+    engine = create_async_engine(str(settings.postgres_dsn))
+    storage = SqlalchemyStorage(engine)
     await storage.connect()
     if await storage.get(CHAT_LIST_KEY) is None:
         await storage.set(CHAT_LIST_KEY, [])
@@ -633,6 +570,8 @@ async def run_context(
         await storage.set(ADMIN_CHAT_ID_KEY)
     if await storage.get(GROUP_CHAT_KEY) is None:
         await storage.set(GROUP_CHAT_KEY)
+    if await storage.get(WAIT_REPLY_FROM_ID_KEY) is None:
+        await storage.set(WAIT_REPLY_FROM_ID_KEY)
 
     handlers.freeze()
     bot = PollBot(settings.tg_token.get_secret_value(), handlers, storage)
@@ -640,22 +579,23 @@ async def run_context(
     await bot.start()
 
     album_forwarder = AlbumForwarder(bot)
+    await album_forwarder.start()
     bot[ALBUM_FORWARDER_KEY] = album_forwarder
-    await bot[ALBUM_FORWARDER_KEY].start()
 
-    admin_chat_id = await bot.storage.get(ADMIN_CHAT_ID_KEY)
+    admin_chat_id = await get_admin_chat_id(bot)
     group_chat = await get_chat(bot, GROUP_CHAT_KEY)
-    await bot.delete_my_commands()
-    await bot.set_my_commands(USER_COMMANDS, BotCommandScopeAllPrivateChats())
+    __ = await bot.delete_my_commands()
+    __ = await bot.set_my_commands(USER_COMMANDS, BotCommandScopeAllPrivateChats())
     if admin_chat_id is not None:
-        assert isinstance(admin_chat_id, int)
-        await bot.set_my_commands(
-            ADMIN_COMMANDS, BotCommandScopeChat(chat_id=admin_chat_id)
+        __ = await bot.set_my_commands(
+            ADMIN_COMMANDS,
+            BotCommandScopeChat(chat_id=admin_chat_id),
         )
     if group_chat is not None:
         try:
-            await bot.set_my_commands(
-                GROUP_COMMANDS, BotCommandScopeChat(chat_id=group_chat.id)
+            __ = await bot.set_my_commands(
+                GROUP_COMMANDS,
+                BotCommandScopeChat(chat_id=group_chat.id),
             )
         except TelegramError as exception:
             if exception.error_code == 403:
@@ -671,53 +611,37 @@ async def run_context(
 
     await album_forwarder.stop()
     await bot.stop()
-    await storage.close()
+    await engine.dispose()
 
 
 def setup_logging() -> None:
     import os
 
     log_format = "%(asctime)s %(name)s %(levelname)s: %(message)s"
-    if debug():
+    if __debug__:
         logging.basicConfig(level=logging.DEBUG, format=log_format)
         logging.getLogger("asyncio").setLevel(logging.ERROR)
         logging.getLogger("aiosqlite").setLevel(logging.INFO)
     else:
         logging.basicConfig(level=logging.INFO, format=log_format)
-    logger.info(
-        "PYTHONOPTIMIZE=%s",
-        os.environ.get("PYTHONOPTIMIZE"),
-    )
+    logger.info("PYTHONOPTIMIZE=%s", os.environ.get("PYTHONOPTIMIZE"))
     logger.info(SOFTWARE)
 
 
 def main() -> None:
-    import argparse  # isort:skip
-    import os  # isort:skip
+    import os  # isort: skip
     import uvloop
 
-    parser = argparse.ArgumentParser(description="Feedback aiotgbot bot")
-    parser.add_argument(
-        "storage_path",
-        type=path,
-        help="storage path",
-    )
-    args = parser.parse_args()
-    if not (args.storage_path.is_file() or args.storage_path.parent.is_dir()):
-        parser.error(
-            f'config file "{args.storage_path}" does not exist '
-            f"and parent path is not dir"
-        )
     if TZ_KEY not in os.environ:
-        parser.error("Env var TZ is not set")
-    settings = Settings()
+        sys.exit("Env var TZ is not set")
+    settings = Settings()  # pyright: ignore[reportCallIssue]
 
     setup_logging()
-    uvloop.install()
+    install_uvloop = cast(Callable[[], None], uvloop.install)
+    install_uvloop()
     runner = Runner(
         run_context,
-        debug=debug(),
-        storage_path=args.storage_path,
+        debug=__debug__,
         settings=settings,
     )
     runner.run()

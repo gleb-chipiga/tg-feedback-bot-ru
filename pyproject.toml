@@ -1,12 +1,109 @@
-[tool.isort]
-profile = "black"
-line_length = 79
+[build-system]
+requires = ["uv_build>=0.9.6,<0.10.0"]
+build-backend = "uv_build"
 
-[tool.black]
-line-length = 79
+[project]
+name = "tg-feedback-bot-ru"
+version = "0.4.1"
+description = "Telegram feedback bot that routes user messages to administrators."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Gleb Chipiga" }]
+requires-python = ">=3.14,<3.15"
+classifiers = [
+    "Intended Audience :: Customer Service",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Microsoft :: Windows",
+    "Topic :: Internet",
+    "Topic :: Communications :: Chat",
+    "Framework :: AsyncIO",
+]
+dependencies = [
+    "aiorunner>=0.2.4,<0.3.0",
+    "aiojobs>=1.4.0,<2.0.0",
+    "aiotgbot[sqlalchemy]>=0.18.8,<0.19.0",
+    "more-itertools>=10.8.0,<11.0.0",
+    "msgspec>=0.20.0,<0.21.0",
+    "pydantic>=2.12.4,<3.0.0",
+    "pydantic-settings>=2.12.0,<3.0.0",
+    "sqlalchemy[postgresql_asyncpg]>=2.0.44,<3.0.0",
+    "uvloop>=0.22.1,<0.23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/gleb-chipiga/tg-feedback-bot-ru"
+Repository = "https://github.com/gleb-chipiga/tg-feedback-bot-ru"
+Issues = "https://github.com/gleb-chipiga/tg-feedback-bot-ru/issues"
+
+[project.scripts]
+feedback-bot = "tg_feedback_bot_ru.feedback_bot:main"
+tg-feedback-bot-ru = "tg_feedback_bot_ru.__main__:main"
+
+[dependency-groups]
+lint = [
+    "basedpyright>=1.33.0,<2.0.0",
+    "mypy>=1.18.2,<2.0.0",
+    "ruff>=0.14.5,<0.15.0",
+]
+dev = [
+    "basedpyright>=1.33.0,<2.0.0",
+    "mypy>=1.18.2,<2.0.0",
+    "ruff>=0.14.5,<0.15.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+preview = true
+
+[tool.ruff.format]
+docstring-code-format = true
+indent-style = "space"
+line-ending = "lf"
+quote-style = "double"
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "B",
+    "C4",
+    "I",
+    "N",
+    "RET",
+    "RUF",
+    "SIM",
+    "UP",
+    "YTT",
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 88
+max-doc-length = 72
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["tg_feedback_bot_ru"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/tg_feedback_bot_ru/*.py" = ["RUF001"]
 
 [tool.mypy]
+python_version = "3.14"
+strict = true
+mypy_path = ["src"]
 plugins = [
     "pydantic.mypy",
-#    "sqlalchemy.ext.mypy.plugin"
+    "sqlalchemy.ext.mypy.plugin"
 ]
