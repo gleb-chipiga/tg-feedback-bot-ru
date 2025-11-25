@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tg-feedback-bot-ru"
-version = "0.4.3"
+version = "0.4.4"
 description = "Telegram feedback bot that routes user messages to administrators."
 readme = "README.md"
 license = { file = "LICENSE" }

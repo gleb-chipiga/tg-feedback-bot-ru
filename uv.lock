@@ -543,7 +543,7 @@ wheels = [
 
 [[package]]
 name = "tg-feedback-bot-ru"
-version = "0.4.3"
+version = "0.4.4"
 source = { editable = "." }
 dependencies = [
     { name = "aiojobs" },
