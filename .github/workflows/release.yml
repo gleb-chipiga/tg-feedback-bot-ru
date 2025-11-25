@@ -16,18 +16,18 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    name: Lint & Types (3.13)
+    name: Lint & Types (3.14)
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           enable-cache: true
       - name: Install dependencies
         run: uv sync --group lint --group dev --frozen
@@ -50,11 +50,11 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           enable-cache: true
       - name: Sync project environment
         run: uv sync --frozen

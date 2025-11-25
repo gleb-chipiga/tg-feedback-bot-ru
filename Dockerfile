@@ -3,7 +3,7 @@
 ARG UV_VERSION=latest
 FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

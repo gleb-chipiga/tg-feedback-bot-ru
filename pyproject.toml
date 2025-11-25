@@ -9,14 +9,14 @@ description = "Telegram feedback bot that routes user messages to administrators
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Gleb Chipiga" }]
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.14,<3.15"
 classifiers = [
     "Intended Audience :: Customer Service",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: System Administrators",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Development Status :: 3 - Alpha",
     "Operating System :: POSIX",
@@ -29,12 +29,13 @@ classifiers = [
 dependencies = [
     "aiorunner>=0.2.5,<0.3.0",
     "aiojobs>=1.4.0,<2.0.0",
-    "aiotgbot[sqlalchemy]>=0.18.8,<0.19.0",
+    "aiotgbot[sqlalchemy]>=0.18.9,<0.19.0",
     "more-itertools>=10.8.0,<11.0.0",
     "msgspec>=0.20.0,<0.21.0",
     "pydantic>=2.12.4,<3.0.0",
     "pydantic-settings>=2.12.0,<3.0.0",
-    "sqlalchemy[postgresql_asyncpg]>=2.0.44,<3.0.0",
+    "sqlalchemy>=2.0.44,<3.0.0",
+    "asyncpg>=0.31.0,<0.32.0",
     "uvloop>=0.22.1,<0.23.0",
 ]
 
@@ -61,7 +62,7 @@ dev = [
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 preview = true
 
 [tool.ruff.format]
@@ -100,7 +101,7 @@ known-first-party = ["tg_feedback_bot_ru"]
 "src/tg_feedback_bot_ru/*.py" = ["RUF001"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 strict = true
 mypy_path = ["src"]
 plugins = [
